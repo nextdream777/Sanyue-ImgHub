@@ -28,6 +28,13 @@
         <div class="upload-list-item-content">
             <div class="upload-list-item-name-wrapper">
                 <el-text class="upload-list-item-name" truncated>{{ truncateFilename(file.name) }}</el-text>
+                <span v-if="file.hasGps" class="geo-badge geo-badge-located" :title="file.geoText || '已含地理坐标'">
+                    <font-awesome-icon icon="map-marker-alt" class="geo-badge-icon" />
+                    <span>{{ file.geoText || '已定位' }}</span>
+                </span>
+                <span v-else class="geo-badge geo-badge-unlocated" title="无 GPS 信息，可一键批量标定">
+                    <span>待定位</span>
+                </span>
             </div>
             <div class="upload-list-item-url" v-if="file.status==='done'">
                 <div class="upload-list-item-url-row">
@@ -194,6 +201,30 @@ export default {
     color: var(--el-text-color-primary);
     letter-spacing: 0.3px;
     text-align: center;
+}
+.geo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+.geo-badge-located {
+    background: rgba(37, 99, 235, 0.1);
+    color: #2563eb;
+    border: 1px solid rgba(37, 99, 235, 0.25);
+}
+.geo-badge-icon {
+    font-size: 10px;
+}
+.geo-badge-unlocated {
+    background: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 /* Progress Bar */

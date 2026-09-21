@@ -79,6 +79,8 @@ export default {
         pageOptions() {
             return [
                 { name: 'dashboard', icon: 'images', label: 'dashboardTabs.fileManagement' },
+                { name: 'atlas', icon: 'map-marked-alt', label: 'dashboardTabs.photoAtlas' },
+                { name: 'atlasManage', icon: 'atlas', label: 'dashboardTabs.atlasManagement' },
                 { name: 'customerConfig', icon: 'user-cog', label: 'dashboardTabs.userManagement' },
                 { name: 'systemConfig', icon: 'cogs', label: 'dashboardTabs.systemSettings' },
                 { name: '', icon: 'upload', label: 'dashboardTabs.fileUpload' }

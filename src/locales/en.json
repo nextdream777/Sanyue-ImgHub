@@ -230,12 +230,6 @@
     "copiedFileLinks": "Copied {count} file links",
     "copyFolderLinksFailed": "Failed to copy folder links, please retry"
   },
-  "dashboardTabs": {
-    "fileManagement": "File Management",
-    "userManagement": "User Management",
-    "systemSettings": "System Settings",
-    "fileUpload": "File Upload"
-  },
   "fileDetail": {
     "title": "File Details",
     "download": "Download",
@@ -836,5 +830,13 @@
     "helpText": "You can try:",
     "uploadImage": "Upload Image",
     "refreshPage": "Refresh Page"
+  },
+  "dashboardTabs": {
+    "fileManagement": "Files",
+    "userManagement": "Users",
+    "systemSettings": "Settings",
+    "fileUpload": "Upload",
+    "photoAtlas": "Photo Atlas",
+    "atlasManagement": "Atlases & Tags"
   }
 }

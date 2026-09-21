@@ -123,6 +123,11 @@
                                         <font-awesome-icon icon="copy" />
                                     </button>
                                 </el-tooltip>
+                                <el-tooltip v-if="unlocatedDoneCount >= 2" :disabled="disableTooltip" content="一键批量标定未定位照片" placement="top" :show-after="1000">
+                                    <button class="modern-action-btn modern-action-btn-geo" @click="openBatchGeoModal">
+                                        <font-awesome-icon icon="map-marker-alt" />
+                                    </button>
+                                </el-tooltip>
                                 <el-tooltip :disabled="disableTooltip" :content="$t('upload.retryFailed')" placement="top" :show-after="1000">
                                     <el-dropdown>
                                         <button class="modern-action-btn modern-action-btn-retry" @click="retryError">
@@ -167,6 +172,43 @@
                 </el-scrollbar>
             </div>
         </el-card>
+
+        <!-- 批量标定未定位照片弹窗 -->
+        <el-dialog
+            v-model="showBatchGeoDialog"
+            title="一键批量标定地理位置"
+            width="580px"
+            :close-on-click-modal="false"
+            class="batch-geo-dialog"
+        >
+            <div class="batch-geo-content">
+                <p class="batch-geo-tip">
+                    将为本批次 <strong>{{ unlocatedDoneCount }}</strong> 张尚未携带 GPS 坐标的照片统一赋予相同的位置信息。
+                </p>
+                <div class="batch-map-wrapper">
+                    <div id="batch-geo-map" class="batch-geo-map"></div>
+                    <div class="batch-map-tip">点击地图任意位置拾取坐标</div>
+                </div>
+                <div class="batch-form-row">
+                    <div class="batch-form-item">
+                        <label>地点名称</label>
+                        <el-input v-model="batchLocationName" placeholder="例如：浙江省·杭州市·西湖" />
+                    </div>
+                    <div class="batch-form-item">
+                        <label>坐标 (WGS-84)</label>
+                        <el-input v-model="batchCoordsText" readonly placeholder="点击上方地图拾取" />
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <div class="dialog-actions">
+                    <el-button @click="showBatchGeoDialog = false">取消</el-button>
+                    <el-button type="primary" :loading="savingBatchGeo" @click="confirmBatchGeo">
+                        确认赋予并保存 ({{ unlocatedDoneCount }} 张)
+                    </el-button>
+                </div>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -176,6 +218,8 @@ import * as imageConversion from 'image-conversion'
 import { mapGetters } from 'vuex'
 import { buildFileUrls, updateFileListUrls, getUrlByFormat } from '@/utils/upload/urlBuilder'
 import { computeSha256 } from '@/utils/upload/sha256'
+import { extractExifGps } from '@/utils/exifReader'
+import { wgs84ToGcj02, gcj02ToWgs84 } from '@/utils/coordTransform'
 import {
     collectFilesFromDataTransferItems,
     filesToUploadEntries,
@@ -289,6 +333,15 @@ data() {
         // 取消上传控制
         abortControllers: new Map(), // 存储每个文件的 AbortController
         pasteFocusTarget: null,
+        // 批量标定地理位置
+        showBatchGeoDialog: false,
+        savingBatchGeo: false,
+        batchLocationName: '',
+        batchLatitude: null,
+        batchLongitude: null,
+        batchCoordsText: '',
+        batchGeoMapInstance: null,
+        batchGeoMarker: null,
     }
 },
 watch: {
@@ -330,6 +383,9 @@ computed: {
     ...mapGetters([
         'storeAutoReUpload'
     ]),
+    unlocatedDoneCount() {
+        return this.fileList.filter(item => (item.status === 'done' || item.status === 'success') && !item.hasGps && item.srcID).length
+    },
     uploadSuccessCount() {
         return this.fileList.filter(item => item.status === 'done' || item.status === 'success').length
     },
@@ -561,6 +617,10 @@ methods: {
         
         const formData = new FormData()
         formData.append('file', file.file)
+        if (fileItem.hasGps && fileItem.latitude !== null && fileItem.longitude !== null) {
+            formData.append('latitude', String(fileItem.latitude))
+            formData.append('longitude', String(fileItem.longitude))
+        }
         if (uploadChannel === 'external') {
             formData.append('url', file.file.url)
         }
@@ -662,6 +722,10 @@ methods: {
             initFormData.append('originalFileName', file.file.name)
             initFormData.append('originalFileType', fileType)
             initFormData.append('totalChunks', totalChunks.toString())
+            if (fileItem.hasGps && fileItem.latitude !== null && fileItem.longitude !== null) {
+                initFormData.append('latitude', String(fileItem.latitude))
+                initFormData.append('longitude', String(fileItem.longitude))
+            }
 
             const initResponse = await axios({
                 url: '/upload' + 
@@ -970,6 +1034,14 @@ methods: {
     beforeUpload(file) {
         return new Promise(async (resolve, reject) => {
             let processedFile = file
+            let gpsInfo = { hasGps: false }
+            try {
+                if (file.type && file.type.includes('image')) {
+                    gpsInfo = await extractExifGps(file)
+                }
+            } catch (err) {
+                console.warn('嗅探 EXIF GPS 失败:', err)
+            }
             
             // WebP 转换：在压缩之前进行
             // 条件：1.开启WebP转换 2.文件类型为图片 3.不是WebP/GIF/SVG格式
@@ -1012,6 +1084,10 @@ methods: {
                     serverCompress: serverCompress,
                     uploadFolder: file.uploadFolder ?? this.uploadFolder,
                     retryCount: 0,
+                    hasGps: gpsInfo.hasGps || false,
+                    latitude: gpsInfo.latitude || null,
+                    longitude: gpsInfo.longitude || null,
+                    geoText: gpsInfo.hasGps ? `${gpsInfo.latitude.toFixed(2)}, ${gpsInfo.longitude.toFixed(2)}` : ''
                 })
                 resolve(file)
             }
@@ -1672,8 +1748,112 @@ methods: {
         if (!glow) return;
         glow.style.opacity = '0';
     },
+    // 打开批量标定弹窗
+    openBatchGeoModal() {
+        this.batchLocationName = ''
+        this.batchLatitude = null
+        this.batchLongitude = null
+        this.batchCoordsText = ''
+        this.showBatchGeoDialog = true
+        this.$nextTick(() => {
+            this.initBatchGeoMap()
+        })
+    },
+    async initBatchGeoMap() {
+        if (!window.L) {
+            if (!document.getElementById('leaflet-css')) {
+                const link = document.createElement('link')
+                link.id = 'leaflet-css'
+                link.rel = 'stylesheet'
+                link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+                document.head.appendChild(link)
+            }
+            await new Promise(resolve => {
+                const script = document.createElement('script')
+                script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+                script.onload = () => resolve()
+                document.head.appendChild(script)
+            })
+        }
+
+        const L = window.L
+        const container = document.getElementById('batch-geo-map')
+        if (!container) return
+
+        if (this.batchGeoMapInstance) {
+            this.batchGeoMapInstance.remove()
+            this.batchGeoMapInstance = null
+        }
+
+        this.batchGeoMapInstance = L.map('batch-geo-map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([30.25, 120.15], 11)
+
+        L.tileLayer(
+            'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+            { subdomains: ['1', '2', '3', '4'], maxZoom: 18 }
+        ).addTo(this.batchGeoMapInstance)
+
+        this.batchGeoMapInstance.on('click', (e) => {
+            const gcjLat = e.latlng.lat
+            const gcjLng = e.latlng.lng
+            const [wgsLat, wgsLng] = gcj02ToWgs84(gcjLat, gcjLng)
+
+            this.batchLatitude = parseFloat(wgsLat.toFixed(6))
+            this.batchLongitude = parseFloat(wgsLng.toFixed(6))
+            this.batchCoordsText = `${this.batchLatitude}, ${this.batchLongitude}`
+
+            if (!this.batchGeoMarker) {
+                this.batchGeoMarker = L.marker([gcjLat, gcjLng]).addTo(this.batchGeoMapInstance)
+            } else {
+                this.batchGeoMarker.setLatLng([gcjLat, gcjLng])
+            }
+        })
+    },
+    async confirmBatchGeo() {
+        if (this.batchLatitude === null || this.batchLongitude === null) {
+            this.$message.warning('请先在地图上点击拾取坐标')
+            return
+        }
+
+        const unlocatedItems = this.fileList.filter(item => (item.status === 'done' || item.status === 'success') && !item.hasGps && item.srcID)
+        if (unlocatedItems.length === 0) {
+            this.showBatchGeoDialog = false
+            return
+        }
+
+        this.savingBatchGeo = true
+        try {
+            await Promise.all(unlocatedItems.map(item => {
+                return axios.post('/api/manage/footprint', {
+                    id: item.srcID,
+                    latitude: this.batchLatitude,
+                    longitude: this.batchLongitude,
+                    location_name: this.batchLocationName
+                }, { withAuthCode: true }).then(() => {
+                    item.hasGps = true
+                    item.latitude = this.batchLatitude
+                    item.longitude = this.batchLongitude
+                    item.geoText = `${this.batchLatitude.toFixed(2)}, ${this.batchLongitude.toFixed(2)}`
+                })
+            }))
+
+            this.$message.success(`成功为 ${unlocatedItems.length} 张照片批量设置地理位置`)
+            this.showBatchGeoDialog = false
+        } catch (err) {
+            console.error('批量标定失败:', err)
+            this.$message.error('批量标定失败')
+        } finally {
+            this.savingBatchGeo = false
+        }
+    },
 },
 beforeDestroy() {
+    if (this.batchGeoMapInstance) {
+        this.batchGeoMapInstance.remove()
+        this.batchGeoMapInstance = null
+    }
     // 清理定时器
     if (this.retryTimer) {
         clearTimeout(this.retryTimer);
@@ -2517,6 +2697,15 @@ html.dark .el-upload__text :deep(em) {
     color: var(--upload-action-retry-color);
 }
 
+.modern-action-btn-geo {
+    color: #2563eb;
+    background: rgba(37, 99, 235, 0.1);
+}
+
+.modern-action-btn-geo:hover {
+    background: rgba(37, 99, 235, 0.2);
+}
+
 .modern-action-btn-danger {
     color: var(--upload-action-danger-color);
     background: var(--upload-action-danger-bg);
@@ -2525,6 +2714,57 @@ html.dark .el-upload__text :deep(em) {
 .modern-action-btn-danger:hover {
     background: var(--upload-action-danger-hover-bg);
     box-shadow: var(--upload-action-danger-hover-shadow);
+}
+
+/* Batch Geo Dialog */
+.batch-geo-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.batch-geo-tip {
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+    margin: 0;
+}
+.batch-map-wrapper {
+    position: relative;
+    height: 220px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+}
+.batch-geo-map {
+    width: 100%;
+    height: 100%;
+}
+.batch-map-tip {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    z-index: 400;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(8px);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #334155;
+    border: 1px solid #f1f5f9;
+}
+.batch-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.batch-form-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.batch-form-item label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
 }
 
 /* Dropdown Menu Styles */

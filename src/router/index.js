@@ -113,6 +113,18 @@ const routes = [
     beforeEnter: adminAuthGuard
   },
   {
+    path: '/atlas',
+    name: 'photoAtlas',
+    component: () => import('../views/PhotoAtlas.vue'),
+    beforeEnter: adminAuthGuard
+  },
+  {
+    path: '/atlasManage',
+    name: 'atlasManage',
+    component: () => import('../views/AtlasManage.vue'),
+    beforeEnter: adminAuthGuard
+  },
+  {
     path: '/customerConfig',
     name: 'customerConfig',
     component: () => import('../views/CustomerConfig.vue'),

@@ -10,6 +10,10 @@ import { faBan } from '@fortawesome/free-solid-svg-icons/faBan';
 import { faBars } from '@fortawesome/free-solid-svg-icons/faBars';
 import { faBook } from '@fortawesome/free-solid-svg-icons/faBook';
 import { faBullhorn } from '@fortawesome/free-solid-svg-icons/faBullhorn';
+import { faAtlas } from '@fortawesome/free-solid-svg-icons/faAtlas';
+import { faCompass } from '@fortawesome/free-solid-svg-icons/faCompass';
+import { faMapMarkedAlt } from '@fortawesome/free-solid-svg-icons/faMapMarkedAlt';
+import { faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons/faMapMarkerAlt';
 import { faCalendar } from '@fortawesome/free-solid-svg-icons/faCalendar';
 import { faChartBar } from '@fortawesome/free-solid-svg-icons/faChartBar';
 import { faChartLine } from '@fortawesome/free-solid-svg-icons/faChartLine';
@@ -98,6 +102,10 @@ import { faUserCog } from '@fortawesome/free-solid-svg-icons/faUserCog';
 export default [
     faAngleDoubleLeft,
     faAngleDoubleRight,
+    faAtlas,
+    faCompass,
+    faMapMarkedAlt,
+    faMapMarkerAlt,
     faArrowDown,
     faArrowLeft,
     faArrowUp,

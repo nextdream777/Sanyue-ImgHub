@@ -231,13 +231,6 @@
     "folderEmptyNoLinks": "文件夹为空，没有可复制的链接",
     "copiedFileLinks": "已复制 {count} 个文件链接",
     "copyFolderLinksFailed": "复制文件夹链接失败，请重试"
-  }
-,
-  "dashboardTabs": {
-    "fileManagement": "文件管理",
-    "userManagement": "用户管理",
-    "systemSettings": "系统设置",
-    "fileUpload": "文件上传"
   },
   "fileDetail": {
     "title": "文件详情",
@@ -844,5 +837,13 @@
     "helpText": "您可以尝试：",
     "uploadImage": "图片上传",
     "refreshPage": "刷新页面"
+  },
+  "dashboardTabs": {
+    "fileManagement": "文件管理",
+    "userManagement": "用户管理",
+    "systemSettings": "系统设置",
+    "fileUpload": "文件上传",
+    "photoAtlas": "光影图志",
+    "atlasManagement": "图志与标签"
   }
 }
