@@ -101,6 +101,16 @@
             </template>
           </el-dropdown>
 
+          <!-- 底图图层切换 (高德模式下可用: 矢量 / 卫星 / 混合) -->
+          <button
+            v-if="engineMode === 'amap'"
+            class="nav-btn-icon layer-switcher-btn"
+            @click="toggleMapLayer"
+            :title="'当前底图: ' + currentLayerLabel + ' (点击切换)'"
+          >
+            <span>{{ currentLayerIcon }}</span>
+          </button>
+
           <!-- 重播入场动效按钮 -->
           <button class="nav-btn-icon replay-btn" @click="replayEntryAnimation" title="重播长卷入场动效">
             <font-awesome-icon icon="redo" />
@@ -350,9 +360,15 @@ export default {
         amap_enable: false,
         amap_api_key: '',
         amap_security_code: '',
-        amap_style: 'amap://styles/whitesmoke',
-        amap_show_poi: false
-      }
+        amap_style: 'whitesmoke',
+        amap_show_poi: false,
+        amap_view_mode: false,
+        amap_layer_type: 'vector',
+        amap_control_bar: false
+      },
+      currentLayerType: 'vector', // 'vector' | 'satellite' | 'satellite_road'
+      satelliteLayer: null,
+      roadNetLayer: null
     };
   },
   computed: {
@@ -385,6 +401,22 @@ export default {
         ink: '🖌️'
       };
       return map[this.entryEffect] || '📜';
+    },
+    currentLayerLabel() {
+      const map = {
+        vector: '矢量底图',
+        satellite: '实景卫星',
+        satellite_road: '卫星路网'
+      };
+      return map[this.currentLayerType] || '矢量底图';
+    },
+    currentLayerIcon() {
+      const map = {
+        vector: '🗺️',
+        satellite: '🛰️',
+        satellite_road: '🌐'
+      };
+      return map[this.currentLayerType] || '🗺️';
     }
   },
   watch: {
@@ -427,13 +459,24 @@ export default {
       // 动画完全展开时的回调钩子
     },
     applyThemeForEffect(effect) {
+      const mapEl = document.getElementById('atlas-map');
       if (this.engineMode === 'amap' && this.mapInstance) {
-        if (effect === 'scroll') {
-          this.mapInstance.setMapStyle('amap://styles/dark');
-        } else if (effect === 'cinematic') {
-          this.mapInstance.setMapStyle('amap://styles/whitesmoke');
-        } else if (effect === 'ink') {
-          this.mapInstance.setMapStyle('amap://styles/darkblue');
+        if (this.currentLayerType === 'vector') {
+          if (effect === 'scroll') {
+            this.mapInstance.setMapStyle('amap://styles/dark');
+            if (this.mapInstance.setPitch) this.mapInstance.setPitch(15);
+            if (mapEl) mapEl.style.filter = 'none';
+          } else if (effect === 'cinematic') {
+            const rawStyle = this.mapConfig.amap_style || 'whitesmoke';
+            const style = rawStyle.startsWith('amap://styles/') ? rawStyle : `amap://styles/${rawStyle}`;
+            this.mapInstance.setMapStyle(style);
+            if (this.mapInstance.setPitch) this.mapInstance.setPitch(38);
+            if (mapEl) mapEl.style.filter = 'sepia(22%) contrast(105%) brightness(98%)';
+          } else if (effect === 'ink') {
+            this.mapInstance.setMapStyle('amap://styles/whitesmoke');
+            if (this.mapInstance.setPitch) this.mapInstance.setPitch(0);
+            if (mapEl) mapEl.style.filter = 'grayscale(35%) sepia(20%) contrast(108%)';
+          }
         }
       }
     },
@@ -516,9 +559,13 @@ export default {
           if (item.id === 'amap_enable') this.mapConfig.amap_enable = Boolean(item.value);
           if (item.id === 'amap_api_key') this.mapConfig.amap_api_key = String(item.value || '').trim();
           if (item.id === 'amap_security_code') this.mapConfig.amap_security_code = String(item.value || '').trim();
-          if (item.id === 'amap_style') this.mapConfig.amap_style = String(item.value || 'amap://styles/whitesmoke');
+          if (item.id === 'amap_style') this.mapConfig.amap_style = String(item.value || 'whitesmoke');
           if (item.id === 'amap_show_poi') this.mapConfig.amap_show_poi = Boolean(item.value);
+          if (item.id === 'amap_view_mode') this.mapConfig.amap_view_mode = Boolean(item.value);
+          if (item.id === 'amap_layer_type') this.mapConfig.amap_layer_type = String(item.value || 'vector');
+          if (item.id === 'amap_control_bar') this.mapConfig.amap_control_bar = Boolean(item.value);
         });
+        this.currentLayerType = this.mapConfig.amap_layer_type || 'vector';
 
         if (this.mapConfig.amap_enable && this.mapConfig.amap_api_key) {
           this.engineMode = 'amap';
@@ -631,16 +678,73 @@ export default {
       const AMap = window.AMap;
       if (!AMap) return;
 
+      const rawStyle = this.mapConfig.amap_style || 'whitesmoke';
+      const mapStyle = rawStyle.startsWith('amap://styles/') ? rawStyle : `amap://styles/${rawStyle}`;
+      const is3D = Boolean(this.mapConfig.amap_view_mode);
+
       this.mapInstance = new AMap.Map('atlas-map', {
         zoom: 4,
         center: [105.0, 35.0],
-        mapStyle: this.mapConfig.amap_style || 'amap://styles/whitesmoke'
+        viewMode: is3D ? '3D' : '2D',
+        pitch: is3D ? 35 : 0,
+        skyColor: '#1e2430',
+        pitchEnable: is3D,
+        rotateEnable: is3D,
+        mapStyle: mapStyle
       });
+
+      // 初始化卫星图层和路网图层实例
+      this.satelliteLayer = new AMap.TileLayer.Satellite();
+      this.roadNetLayer = new AMap.TileLayer.RoadNet();
+
+      // 应用默认图层
+      if (this.currentLayerType && this.currentLayerType !== 'vector') {
+        this.applyAmapLayers(this.currentLayerType);
+      }
 
       // 如果关闭了 POI，则仅保留基础底图要素
       if (!this.mapConfig.amap_show_poi) {
         this.mapInstance.setFeatures(['bg', 'road', 'building']);
       }
+
+      // 如果开启了 3D 罗盘控件
+      if (this.mapConfig.amap_control_bar) {
+        AMap.plugin(['AMap.ControlBar'], () => {
+          const controlBar = new AMap.ControlBar({
+            position: { right: '24px', bottom: '110px' },
+            showZoomBar: false
+          });
+          this.mapInstance.addControl(controlBar);
+        });
+      }
+    },
+
+    applyAmapLayers(layerType) {
+      if (!this.mapInstance || !window.AMap) return;
+      this.currentLayerType = layerType;
+      const AMap = window.AMap;
+      if (layerType === 'satellite') {
+        this.mapInstance.setLayers([this.satelliteLayer]);
+      } else if (layerType === 'satellite_road') {
+        this.mapInstance.setLayers([this.satelliteLayer, this.roadNetLayer]);
+      } else {
+        // 矢量底图：使用默认底图图层
+        this.mapInstance.setLayers([AMap.createDefaultLayer()]);
+      }
+    },
+
+    toggleMapLayer() {
+      if (this.engineMode !== 'amap') return;
+      const order = ['vector', 'satellite', 'satellite_road'];
+      const currentIndex = order.indexOf(this.currentLayerType);
+      const nextType = order[(currentIndex + 1) % order.length];
+      this.applyAmapLayers(nextType);
+      const labelMap = {
+        vector: '矢量底图',
+        satellite: '实景卫星',
+        satellite_road: '卫星+路网'
+      };
+      this.$message.info(`已切换至: ${labelMap[nextType]}`);
     },
 
     // 5. 拉取足迹数据并渲染散点/聚合
