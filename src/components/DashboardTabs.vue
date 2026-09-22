@@ -9,7 +9,12 @@
             @mouseenter="handlePageSwitcherEnter"
             @mouseleave="handlePageSwitcherLeave"
         >
-            <div class="page-switcher-sheet" role="menu" @click.stop>
+            <div
+                class="page-switcher-sheet"
+                :style="{ '--inactive-options-count': inactivePageOptions.length }"
+                role="menu"
+                @click.stop
+            >
                 <button
                     class="page-option is-current"
                     type="button"
@@ -209,7 +214,7 @@ export default {
     left: 0;
     right: 0;
     z-index: 0;
-    height: 160px;
+    height: calc(45px + var(--inactive-options-count, 5) * 37px + 8px);
     border: 1px solid var(--tabs-switcher-border-color);
     border-radius: 14px;
     background: var(--tabs-dropdown-popper-bg-color);
@@ -371,7 +376,7 @@ export default {
     }
 
     .page-switcher-sheet::before {
-        height: 140px;
+        height: calc(40px + var(--inactive-options-count, 5) * 32px + 8px);
         transform: translateY(-3px) scaleY(0.72);
     }
 

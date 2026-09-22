@@ -6,6 +6,7 @@ const { ElementPlusResolver } = require('unplugin-vue-components/resolvers');
 const CompressionPlugin = require("compression-webpack-plugin")
 
 module.exports = defineConfig({
+  parallel: false,
   outputDir: path.resolve(__dirname, '../CloudFlare-ImgBed/frontend-dist'),
   configureWebpack: {
     plugins: [

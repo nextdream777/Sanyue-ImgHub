@@ -3,6 +3,13 @@
     <!-- 全屏图卷地图容器 -->
     <div id="atlas-map" class="map-viewport"></div>
 
+    <!-- 典藏入场动效遮罩层 (三种意境：拟物双轴 / 镜头下沉 / 水墨晕染) -->
+    <AtlasEntryOverlay
+      ref="entryOverlay"
+      :effect="entryEffect"
+      @unfold-complete="onEntryUnfoldComplete"
+    />
+
     <!-- 顶部悬浮控制栏 (Top Floating Island) -->
     <header class="top-nav-island">
       <div class="glass-bar">
@@ -15,8 +22,9 @@
             <span class="brand-text">光影图志</span>
           </div>
 
-          <!-- 图志下拉选择器 -->
+          <!-- 图志选择器：仅管理员可见切换下拉框；访客模式展示静态图志徽章 -->
           <el-select
+            v-if="isAdmin"
             v-model="selectedAtlasId"
             @change="onAtlasChange"
             class="atlas-selector"
@@ -40,6 +48,9 @@
               <el-tag size="small" type="primary" class="atlas-opt-tag">图志</el-tag>
             </el-option>
           </el-select>
+          <div v-else class="visitor-atlas-badge">
+            <span class="atlas-badge-text">{{ currentAtlasName }}</span>
+          </div>
         </div>
 
         <!-- 中间：动态标签过滤器 (纯文字胶囊，去 Emoji) -->
@@ -65,19 +76,49 @@
 
         <!-- 右侧：指标统计与快捷操作 -->
         <div class="nav-right">
+          <!-- 入场动效切换器 (三种意境自如切换) -->
+          <el-dropdown trigger="click" @command="handleEffectChange" class="effect-dropdown">
+            <button class="effect-switcher-btn" :title="'当前入场意境: ' + currentEffectLabel">
+              <span class="effect-icon">{{ currentEffectIcon }}</span>
+              <span class="effect-label desktop-only">{{ currentEffectLabel }}</span>
+              <font-awesome-icon icon="chevron-down" class="effect-arrow" />
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu class="atlas-effect-menu">
+                <el-dropdown-item command="scroll" :class="{ 'is-active': entryEffect === 'scroll' }">
+                  <span class="item-icon">📜</span>
+                  <span class="item-name">拟物双轴 · 金碧千里江山</span>
+                </el-dropdown-item>
+                <el-dropdown-item command="cinematic" :class="{ 'is-active': entryEffect === 'cinematic' }">
+                  <span class="item-icon">🎬</span>
+                  <span class="item-name">镜头下沉 · 纪实羊皮纸</span>
+                </el-dropdown-item>
+                <el-dropdown-item command="ink" :class="{ 'is-active': entryEffect === 'ink' }">
+                  <span class="item-icon">🖌️</span>
+                  <span class="item-name">水墨晕染 · 徽派青绿墨韵</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+
+          <!-- 重播入场动效按钮 -->
+          <button class="nav-btn-icon replay-btn" @click="replayEntryAnimation" title="重播长卷入场动效">
+            <font-awesome-icon icon="redo" />
+          </button>
+
           <div class="metric-pill desktop-only">
             <font-awesome-icon icon="map-marker-alt" class="metric-icon" />
             <span>{{ metricText }}</span>
           </div>
 
-          <!-- 打卡选点按钮 -->
-          <button class="action-btn-primary" @click="openNewPinModal">
+          <!-- 打卡选点按钮 (管理员可见) -->
+          <button v-if="isAdmin" class="action-btn-primary" @click="openNewPinModal">
             <font-awesome-icon icon="plus" />
             <span>打卡选点</span>
           </button>
 
-          <!-- 管理图志按钮 -->
-          <button class="action-btn-secondary" @click="goToAtlasManage" title="图志与标签治理">
+          <!-- 管理图志按钮 (管理员可见) -->
+          <button v-if="isAdmin" class="action-btn-secondary" @click="goToAtlasManage" title="图志与标签治理">
             <font-awesome-icon icon="atlas" />
             <span class="desktop-only">图志管理</span>
           </button>
@@ -246,11 +287,18 @@
 <script>
 import axios from '@/utils/axios';
 import { wgs84ToGcj02, gcj02ToWgs84 } from '@/utils/coordTransform';
+import AtlasEntryOverlay from '@/components/atlas/AtlasEntryOverlay.vue';
 
 export default {
   name: 'PhotoAtlas',
+  components: {
+    AtlasEntryOverlay
+  },
   data() {
     return {
+      // 入场动效模式: 'scroll' (拟物双轴) | 'cinematic' (镜头下沉) | 'ink' (水墨晕染)
+      entryEffect: localStorage.getItem('atlas_entry_effect') || 'scroll',
+
       // 引擎模式: 'amap' 或 'leaflet'
       engineMode: 'leaflet',
       mapInstance: null,
@@ -258,6 +306,10 @@ export default {
       pickerMarker: null,
       markerLayerGroup: null,
       amapMarkers: [],
+
+      // 权限与当前图志
+      isAdmin: false,
+      currentAtlas: null,
 
       // 图志与过滤
       selectedAtlasId: 'all',
@@ -311,24 +363,145 @@ export default {
         0
       );
       return `${pinCount} 处足迹 · ${photoCount} 张照片`;
+    },
+    currentAtlasName() {
+      if (this.currentAtlas) return this.currentAtlas.name;
+      if (this.selectedAtlasId === 'all') return '全图卷 (全部足迹)';
+      const found = this.atlasList.find((a) => a.id === this.selectedAtlasId);
+      return found ? found.name : '光影图志';
+    },
+    currentEffectLabel() {
+      const map = {
+        scroll: '拟物双轴',
+        cinematic: '镜头下沉',
+        ink: '水墨晕染'
+      };
+      return map[this.entryEffect] || '拟物双轴';
+    },
+    currentEffectIcon() {
+      const map = {
+        scroll: '📜',
+        cinematic: '🎬',
+        ink: '🖌️'
+      };
+      return map[this.entryEffect] || '📜';
+    }
+  },
+  watch: {
+    async '$route.params.id'(newId) {
+      this.selectedAtlasId = newId || 'all';
+      const allowed = await this.checkAuthAndRoute();
+      if (allowed) {
+        await this.loadFootprintData();
+      }
     }
   },
   async mounted() {
+    const allowed = await this.checkAuthAndRoute();
+    if (!allowed) return;
+
     await this.fetchSysMapConfig();
     await this.fetchAtlases();
     await this.fetchTags();
     await this.initMapEngine();
+    this.applyThemeForEffect(this.entryEffect);
     await this.loadFootprintData();
   },
   beforeUnmount() {
     this.destroyMapInstances();
   },
   methods: {
+    // 入场动效切换与重播
+    handleEffectChange(effect) {
+      this.entryEffect = effect;
+      localStorage.setItem('atlas_entry_effect', effect);
+      this.applyThemeForEffect(effect);
+      this.replayEntryAnimation();
+    },
+    replayEntryAnimation() {
+      this.$nextTick(() => {
+        this.$refs.entryOverlay?.play();
+      });
+    },
+    onEntryUnfoldComplete() {
+      // 动画完全展开时的回调钩子
+    },
+    applyThemeForEffect(effect) {
+      if (this.engineMode === 'amap' && this.mapInstance) {
+        if (effect === 'scroll') {
+          this.mapInstance.setMapStyle('amap://styles/dark');
+        } else if (effect === 'cinematic') {
+          this.mapInstance.setMapStyle('amap://styles/whitesmoke');
+        } else if (effect === 'ink') {
+          this.mapInstance.setMapStyle('amap://styles/darkblue');
+        }
+      }
+    },
+
     goToDashboard() {
       this.$router.push('/dashboard');
     },
     goToAtlasManage() {
       this.$router.push('/atlasManage');
+    },
+
+    // 0. 路由权限与公开/私密鉴权校验
+    async checkAuthAndRoute() {
+      // 检查管理员身份
+      this.isAdmin = Boolean(this.$store.state.isAdminLoggedIn);
+      if (!this.isAdmin) {
+        try {
+          const authRes = await axios.get('/api/auth/status', { withAuthCode: true });
+          if (authRes.data?.isAdmin) {
+            this.isAdmin = true;
+            this.$store.commit('setAdminLoggedIn', true);
+          }
+        } catch (e) {}
+      }
+
+      // 获取动态路由参数 /atlas/:id
+      const routeId = this.$route.params.id || this.$route.query.id;
+      this.selectedAtlasId = routeId || 'all';
+
+      // 规则 A: 全量系统图志（全图卷）仅允许管理员查看
+      if (this.selectedAtlasId === 'all') {
+        if (!this.isAdmin) {
+          this.$message.warning('全图卷为系统全量视图，请先登录管理员账号');
+          this.$router.push('/adminLogin?redirect=' + encodeURIComponent(this.$route.fullPath));
+          return false;
+        }
+        return true;
+      }
+
+      // 规则 B: 具体图志按公开状态拦截
+      try {
+        const res = await axios.get(`/api/manage/atlas/${this.selectedAtlasId}`);
+        this.currentAtlas = res.data?.data;
+        if (!this.currentAtlas?.isPublic && !this.isAdmin) {
+          this.$message.warning('该图志为私密图志，请先登录管理员账号');
+          this.$router.push('/adminLogin?redirect=' + encodeURIComponent(this.$route.fullPath));
+          return false;
+        }
+        return true;
+      } catch (err) {
+        if (!this.isAdmin) {
+          this.$message.warning('该图志不存在或已设为私密，请先登录');
+          this.$router.push('/adminLogin?redirect=' + encodeURIComponent(this.$route.fullPath));
+          return false;
+        }
+        return true;
+      }
+    },
+
+    // 切换图志 (管理员操作)
+    onAtlasChange(newId) {
+      this.selectedAtlasId = newId;
+      if (newId === 'all') {
+        this.$router.push('/atlas');
+      } else {
+        this.$router.push(`/atlas/${newId}`);
+      }
+      this.loadFootprintData();
     },
 
     // 1. 获取系统地图设置
@@ -359,7 +532,7 @@ export default {
     async fetchAtlases() {
       try {
         const res = await axios.get('/api/manage/atlas', { withAuthCode: true });
-        this.atlasList = res.data?.atlases || [];
+        this.atlasList = res.data?.data || res.data?.atlases || [];
       } catch (err) {
         console.error('获取图志列表失败:', err);
       }
@@ -369,8 +542,11 @@ export default {
     async fetchTags() {
       try {
         const res = await axios.get('/api/manage/tags/governance', { withAuthCode: true });
-        const tags = res.data?.tags || [];
-        this.availableTags = tags.filter((t) => t.geotaggedCount > 0).slice(0, 10);
+        const raw = res.data?.data || res.data?.tags || [];
+        this.availableTags = raw.filter((t) => (t.geotaggedCount ?? 0) > 0).slice(0, 10).map((t) => ({
+          name: t.tag || t.name,
+          count: t.count ?? t.totalCount ?? 0
+        }));
       } catch (err) {
         console.warn('获取系统标签失败:', err);
       }
@@ -947,6 +1123,77 @@ export default {
   flex-shrink: 0;
 }
 
+.effect-dropdown {
+  display: flex;
+  align-items: center;
+}
+
+.effect-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 10px;
+  color: #856116;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.effect-switcher-btn:hover {
+  background: rgba(212, 175, 55, 0.22);
+  border-color: #d4af37;
+  color: #5d4615;
+}
+
+.effect-icon {
+  font-size: 13px;
+}
+
+.effect-arrow {
+  font-size: 10px;
+  margin-left: 2px;
+  color: #856116;
+  transition: transform 0.2s ease;
+}
+
+.replay-btn {
+  color: #856116;
+  background: rgba(212, 175, 55, 0.1);
+  border-color: rgba(212, 175, 55, 0.3);
+}
+
+.replay-btn:hover {
+  background: rgba(212, 175, 55, 0.25);
+  color: #5d4615;
+  transform: rotate(180deg);
+}
+
+:deep(.atlas-effect-menu) {
+  border-radius: 12px;
+  padding: 6px;
+}
+
+:deep(.atlas-effect-menu .el-dropdown-menu__item) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+:deep(.atlas-effect-menu .el-dropdown-menu__item.is-active) {
+  background: rgba(212, 175, 55, 0.15);
+  color: #856116;
+  font-weight: 700;
+}
+
 .metric-pill {
   display: flex;
   align-items: center;
@@ -1346,6 +1593,23 @@ export default {
 @keyframes pinPulse {
   0% { transform: scale(1); opacity: 0.8; }
   100% { transform: scale(2.2); opacity: 0; }
+}
+
+.visitor-atlas-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.atlas-badge-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #93c5fd;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {

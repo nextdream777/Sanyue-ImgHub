@@ -89,6 +89,14 @@
                   <font-awesome-icon icon="image" class="placeholder-icon" />
                 </div>
                 <div class="cover-gradient"></div>
+                <div class="system-badge" v-if="atlas.isPublic || atlas.is_public" style="background: rgba(16, 185, 129, 0.85); left: auto; right: 12px;">
+                  <font-awesome-icon icon="globe" />
+                  <span>公开图志</span>
+                </div>
+                <div class="system-badge" v-else style="background: rgba(100, 116, 139, 0.85); left: auto; right: 12px;">
+                  <font-awesome-icon icon="lock" />
+                  <span>私密图志</span>
+                </div>
                 <div class="cover-info">
                   <h3 class="card-title" :title="atlas.name">{{ atlas.name }}</h3>
                   <p class="card-desc" :title="atlas.description">{{ atlas.description || '暂无图志描述' }}</p>
@@ -98,11 +106,11 @@
               <div class="card-body">
                 <!-- 关联规则信息 -->
                 <div class="rule-section">
-                  <div class="rule-row" v-if="atlas.rules && atlas.rules.directories && atlas.rules.directories.length">
+                  <div class="rule-row" v-if="(atlas.rules?.directories && atlas.rules.directories.length) || (atlas.queryRules?.directories && atlas.queryRules.directories.length)">
                     <span class="rule-label">关联目录:</span>
                     <div class="rule-tags-wrap">
                       <span
-                        v-for="dir in atlas.rules.directories"
+                        v-for="dir in (atlas.rules?.directories || atlas.queryRules?.directories)"
                         :key="dir"
                         class="rule-pill dir-pill"
                       >
@@ -110,11 +118,11 @@
                       </span>
                     </div>
                   </div>
-                  <div class="rule-row" v-if="atlas.rules && atlas.rules.tags && atlas.rules.tags.length">
+                  <div class="rule-row" v-if="(atlas.rules?.tags && atlas.rules.tags.length) || (atlas.queryRules?.tags && atlas.queryRules.tags.length)">
                     <span class="rule-label">关联标签:</span>
                     <div class="rule-tags-wrap">
                       <span
-                        v-for="tag in atlas.rules.tags"
+                        v-for="tag in (atlas.rules?.tags || atlas.queryRules?.tags)"
                         :key="tag"
                         class="rule-pill tag-pill"
                       >
@@ -122,7 +130,7 @@
                       </span>
                     </div>
                   </div>
-                  <div class="rule-row" v-if="(!atlas.rules || (!atlas.rules.directories?.length && !atlas.rules.tags?.length))">
+                  <div class="rule-row" v-if="!atlas.rules?.directories?.length && !atlas.rules?.tags?.length && !atlas.queryRules?.directories?.length && !atlas.queryRules?.tags?.length">
                     <span class="rule-label">规则:</span>
                     <span class="rule-text-muted">手动策展收录</span>
                   </div>
@@ -153,6 +161,10 @@
         <el-tab-pane label="标签治理 (Tag Governance)" name="tags">
           <div class="tab-toolbar">
             <div class="toolbar-left">
+              <el-button type="primary" class="btn-create" @click="openCreateTagDialog">
+                <font-awesome-icon icon="plus" class="btn-icon" />
+                <span>新建标签</span>
+              </el-button>
               <el-button type="danger" plain @click="confirmCleanDeadTags" :loading="cleaningTags">
                 <font-awesome-icon icon="trash-alt" class="btn-icon" />
                 <span>清理无引用死标签</span>
@@ -254,9 +266,16 @@
             filterable
             allow-create
             default-first-option
-            placeholder="输入或选择目录路径，如 /travel/hangzhou"
+            placeholder="选择或输入目录路径，如 /travel/hangzhou"
             style="width: 100%"
-          />
+          >
+            <el-option
+              v-for="dir in availableDirectories"
+              :key="dir"
+              :label="dir"
+              :value="dir"
+            />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="关联标签 (自动收录带有这些标签的带坐标照片)">
@@ -266,14 +285,38 @@
             filterable
             allow-create
             default-first-option
-            placeholder="输入或选择标签，如 建筑, 风光"
+            placeholder="选择或输入标签，如 建筑, 风光"
             style="width: 100%"
-          />
+          >
+            <el-option
+              v-for="tag in tags"
+              :key="tag.name"
+              :label="`#${tag.name} (${tag.totalCount || 0}张)`"
+              :value="tag.name"
+            />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="封面图片 URL (可选，留空将自动采用第一张可用照片)">
           <el-input v-model="atlasForm.cover_url" placeholder="https://... 或 /file/..." />
         </el-form-item>
+
+        <el-row :gutter="16">
+          <el-col :span="14">
+            <el-form-item label="公开状态">
+              <el-switch
+                v-model="atlasForm.is_public"
+                active-text="公开 (任何人通过链接免密查看)"
+                inactive-text="私密 (需登录)"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="10">
+            <el-form-item label="显示排序">
+              <el-input-number v-model="atlasForm.sort_order" :min="0" :max="999" controls-position="right" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-form>
 
       <template #footer>
@@ -311,6 +354,33 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 新建标签弹窗 -->
+    <el-dialog
+      v-model="showCreateTagDialog"
+      title="新建全局标签"
+      width="440px"
+      class="create-tag-dialog"
+    >
+      <div class="create-tag-content" style="padding: 10px 0;">
+        <div class="form-item">
+          <label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 600;">标签名称</label>
+          <el-input
+            v-model="newTagName"
+            placeholder="例如：杭州、日落、建筑"
+            @keyup.enter="submitCreateTag"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-actions">
+          <el-button @click="showCreateTagDialog = false">取消</el-button>
+          <el-button type="primary" @click="submitCreateTag">
+            确认新建
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -339,6 +409,9 @@ export default {
       tagSearchQuery: '',
       cleaningTags: false,
 
+      // 目录列表
+      availableDirectories: [],
+
       // 图志编辑表单
       showAtlasDialog: false,
       savingAtlas: false,
@@ -348,14 +421,20 @@ export default {
         description: '',
         directories: [],
         tags: [],
-        cover_url: ''
+        cover_url: '',
+        is_public: false,
+        sort_order: 0
       },
 
       // 标签合并弹窗
       showMergeTagDialog: false,
       savingMergeTag: false,
       currentMergeSourceTag: '',
-      targetTagName: ''
+      targetTagName: '',
+
+      // 新建标签弹窗
+      showCreateTagDialog: false,
+      newTagName: ''
     };
   },
   computed: {
@@ -378,6 +457,7 @@ export default {
     }
   },
   async mounted() {
+    await this.fetchDirectories();
     await this.fetchAtlases();
     await this.fetchTags();
   },
@@ -389,12 +469,45 @@ export default {
       });
     },
 
-    // 1. 图志管理
+    // 1. 目录树获取
+    async fetchDirectories() {
+      try {
+        const res = await axios.get('/api/directoryTree', { withAuthCode: true });
+        if (res.data?.tree) {
+          const paths = [];
+          const traverse = (node, currentPath) => {
+            if (node.name && node.name !== 'root') {
+              currentPath = currentPath ? `${currentPath}/${node.name}` : `/${node.name}`;
+              paths.push(currentPath);
+            }
+            if (node.children && node.children.length) {
+              node.children.forEach((child) => traverse(child, currentPath));
+            }
+          };
+          traverse(res.data.tree, '');
+          this.availableDirectories = Array.from(new Set(paths)).sort();
+        }
+      } catch (err) {
+        console.warn('获取目录树失败:', err);
+      }
+    },
+
+    // 2. 图志管理
     async fetchAtlases() {
       this.loadingAtlases = true;
       try {
         const res = await axios.get('/api/manage/atlas', { withAuthCode: true });
-        this.atlases = res.data?.atlases || [];
+        const list = res.data?.data || res.data?.atlases || [];
+        this.atlases = list.map((a) => ({
+          ...a,
+          cover_url: a.coverUrl || a.cover_url || (a.coverFileId ? `/file/${a.coverFileId}` : ''),
+          rules: a.queryRules || a.query_rules || a.rules || {},
+          queryRules: a.queryRules || a.query_rules || a.rules || {},
+          is_public: Boolean(a.isPublic ?? a.is_public),
+          isPublic: Boolean(a.isPublic ?? a.is_public),
+          sort_order: a.sortOrder ?? a.sort_order ?? 0,
+          sortOrder: a.sortOrder ?? a.sort_order ?? 0
+        }));
       } catch (err) {
         console.error('获取图志列表失败:', err);
         ElMessage.error('获取图志列表失败');
@@ -404,10 +517,11 @@ export default {
     },
 
     viewInAtlas(atlasId) {
-      this.$router.push({
-        path: '/atlas',
-        query: atlasId && atlasId !== 'all' ? { id: atlasId } : {}
-      });
+      if (atlasId && atlasId !== 'all') {
+        this.$router.push(`/atlas/${atlasId}`);
+      } else {
+        this.$router.push('/atlas');
+      }
     },
 
     openCreateAtlasDialog() {
@@ -417,19 +531,24 @@ export default {
         description: '',
         directories: [],
         tags: [],
-        cover_url: ''
+        cover_url: '',
+        is_public: false,
+        sort_order: 0
       };
       this.showAtlasDialog = true;
     },
 
     openEditAtlasDialog(atlas) {
       this.editingAtlasId = atlas.id;
+      const rules = atlas.queryRules || atlas.query_rules || atlas.rules || {};
       this.atlasForm = {
         name: atlas.name || '',
         description: atlas.description || '',
-        directories: atlas.rules?.directories ? [...atlas.rules.directories] : [],
-        tags: atlas.rules?.tags ? [...atlas.rules.tags] : [],
-        cover_url: atlas.cover_url || ''
+        directories: rules.directories ? [...rules.directories] : [],
+        tags: rules.tags ? [...rules.tags] : [],
+        cover_url: atlas.cover_url || atlas.coverUrl || '',
+        is_public: Boolean(atlas.isPublic ?? atlas.is_public),
+        sort_order: atlas.sortOrder ?? atlas.sort_order ?? 0
       };
       this.showAtlasDialog = true;
     },
@@ -448,11 +567,24 @@ export default {
             id: this.editingAtlasId || undefined,
             name: this.atlasForm.name.trim(),
             description: this.atlasForm.description.trim(),
+            queryRules: {
+              directories: this.atlasForm.directories,
+              tags: this.atlasForm.tags
+            },
+            query_rules: {
+              directories: this.atlasForm.directories,
+              tags: this.atlasForm.tags
+            },
             rules: {
               directories: this.atlasForm.directories,
               tags: this.atlasForm.tags
             },
-            cover_url: this.atlasForm.cover_url.trim()
+            cover_url: this.atlasForm.cover_url.trim(),
+            coverUrl: this.atlasForm.cover_url.trim(),
+            is_public: this.atlasForm.is_public,
+            isPublic: this.atlasForm.is_public,
+            sort_order: this.atlasForm.sort_order,
+            sortOrder: this.atlasForm.sort_order
           },
           { withAuthCode: true }
         );
@@ -491,18 +623,51 @@ export default {
       }
     },
 
-    // 2. 标签治理
+    // 3. 标签治理
     async fetchTags() {
       this.loadingTags = true;
       try {
         const res = await axios.get('/api/manage/tags/governance', { withAuthCode: true });
-        this.tags = res.data?.tags || [];
+        const raw = res.data?.data || res.data?.tags || [];
+        this.tags = raw.map((t) => ({
+          name: t.tag || t.name,
+          totalCount: t.count ?? t.totalCount ?? 0,
+          geotaggedCount: t.geotaggedCount ?? 0,
+          lastUsed: t.lastUsed
+        }));
       } catch (err) {
         console.error('获取标签列表失败:', err);
         ElMessage.error('获取标签治理列表失败');
       } finally {
         this.loadingTags = false;
       }
+    },
+
+    openCreateTagDialog() {
+      this.newTagName = '';
+      this.showCreateTagDialog = true;
+    },
+
+    submitCreateTag() {
+      const tag = this.newTagName.trim();
+      if (!tag) {
+        ElMessage.warning('请输入标签名称');
+        return;
+      }
+      const exists = this.tags.some((t) => t.name.toLowerCase() === tag.toLowerCase());
+      if (exists) {
+        ElMessage.info('该标签已存在');
+        this.showCreateTagDialog = false;
+        return;
+      }
+      this.tags.unshift({
+        name: tag,
+        totalCount: 0,
+        geotaggedCount: 0,
+        lastUsed: Date.now()
+      });
+      ElMessage.success(`标签「#${tag}」已新建并加入标签池`);
+      this.showCreateTagDialog = false;
     },
 
     openMergeTagDialog(tagRow) {
