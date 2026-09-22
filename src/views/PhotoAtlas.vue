@@ -447,16 +447,19 @@ export default {
 
     // 0. 路由权限与公开/私密鉴权校验
     async checkAuthAndRoute() {
-      // 检查管理员身份
-      this.isAdmin = Boolean(this.$store.state.isAdminLoggedIn);
-      if (!this.isAdmin) {
-        try {
-          const authRes = await axios.get('/api/auth/status', { withAuthCode: true });
-          if (authRes.data?.isAdmin) {
-            this.isAdmin = true;
-            this.$store.commit('setAdminLoggedIn', true);
-          }
-        } catch (e) {}
+      // 检查管理员身份（通过 sessionCheck 接口校验真实 Cookie 会话）
+      try {
+        const authRes = await axios.get('/api/auth/sessionCheck', { withCredentials: true });
+        const data = authRes.data || {};
+        if (!data.adminRequired || (data.valid && data.authType === 'admin')) {
+          this.isAdmin = true;
+          this.$store.commit('setAdminLoggedIn', true);
+        } else {
+          this.isAdmin = false;
+          this.$store.commit('setAdminLoggedIn', false);
+        }
+      } catch (e) {
+        this.isAdmin = Boolean(this.$store.state.adminLoggedIn);
       }
 
       // 获取动态路由参数 /atlas/:id

@@ -31,7 +31,7 @@ const adminAuthGuard = (to, from, next) => {
       if (wasLoggedIn) {
         ElMessage.error(i18n.global.t('login.authRequired'))
       }
-      next({ name: 'adminLogin' })
+      next({ name: 'adminLogin', query: { redirect: to.fullPath } })
     } else {
       next()
     }
@@ -42,7 +42,7 @@ const adminAuthGuard = (to, from, next) => {
       if (wasLoggedIn) {
         ElMessage.error(i18n.global.t('login.authRequired'))
       }
-      next({ name: 'adminLogin' })
+      next({ name: 'adminLogin', query: { redirect: to.fullPath } })
     } else {
       next()
     }

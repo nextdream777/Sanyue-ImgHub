@@ -20,7 +20,9 @@ export default async function fetchWithAuth(url, options = {}) {
         isRedirecting = true;
         store.commit('setAdminLoggedIn', false);
         // 静默跳转登录页，不弹出错误提示（路由守卫负责认证 UX）
-        router.push('/adminLogin').finally(() => {
+        const currentPath = router.currentRoute.value?.fullPath;
+        const redirectQuery = currentPath && currentPath !== '/adminLogin' ? { redirect: currentPath } : {};
+        router.push({ path: '/adminLogin', query: redirectQuery }).finally(() => {
             isRedirecting = false;
         });
     }

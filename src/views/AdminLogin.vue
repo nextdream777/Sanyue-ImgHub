@@ -74,7 +74,12 @@ export default {
                     // 认证成功，标记已登录状态（不再存储密码）
                     // 会话 Token 已通过 HttpOnly Cookie 由后端设置
                     this.$store.commit('setAdminLoggedIn', true);
-                    this.$router.push('/dashboard');
+                    const redirect = this.$route.query.redirect;
+                    if (redirect && redirect !== '/adminLogin') {
+                        this.$router.push(redirect);
+                    } else {
+                        this.$router.push('/dashboard');
+                    }
                 } else {
                     const error = result.error || new Error('Unknown error');
                     this.isLoading = false;
