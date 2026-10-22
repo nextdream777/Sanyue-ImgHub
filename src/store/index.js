@@ -8,6 +8,8 @@ export default createStore({
     bingWallPapers: [],
     // 会话状态标记（不存储密码，实际认证通过 HttpOnly Cookie）
     adminLoggedIn: false,
+    adminAccessStarted: false,
+    adminAuthWarningVisible: false,
     userLoggedIn: false,
     uploadMethod: 'default',
     uploadCopyUrlForm: '',
@@ -66,6 +68,17 @@ export default createStore({
     },
     setAdminLoggedIn(state, loggedIn) {
       state.adminLoggedIn = loggedIn;
+      if (!loggedIn) {
+        state.adminAccessStarted = false;
+        state.adminAuthWarningVisible = false;
+      }
+    },
+    beginAdminAccess(state, { required, fresh }) {
+      if (!required && (fresh || !state.adminAccessStarted)) state.adminAuthWarningVisible = true;
+      state.adminAccessStarted = true;
+    },
+    dismissAdminAuthWarning(state) {
+      state.adminAuthWarningVisible = false;
     },
     setUserLoggedIn(state, loggedIn) {
       state.userLoggedIn = loggedIn;
@@ -112,8 +125,13 @@ export default createStore({
     }
   },
   actions: {
-    async fetchUserConfig({ commit }) {
+    async fetchUserConfig({ commit }, configReady) {
       try {
+        const earlyConfig = await configReady;
+        if (earlyConfig) {
+          commit('setUserConfig', earlyConfig);
+          return;
+        }
         const response = await axios.get('/api/userConfig');
         commit('setUserConfig', response.data);
       } catch (error) {

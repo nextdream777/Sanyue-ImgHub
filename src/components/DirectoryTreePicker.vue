@@ -299,6 +299,10 @@ export default {
     font-weight: 500;
 }
 
+html.dark .tree-node.is-current .node-label {
+    color: var(--primary-color-accent);
+}
+
 .folder-icon {
     color: var(--el-color-warning);
     font-size: 16px;
@@ -348,8 +352,6 @@ export default {
 <style>
 .directory-tree-popover {
     padding: 0 !important;
-    border-radius: 12px !important;
-    box-shadow: var(--el-box-shadow-light) !important;
 }
 
 /* 加速 popover 动画 */

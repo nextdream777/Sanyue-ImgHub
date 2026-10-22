@@ -1,37 +1,72 @@
 <template>
     <div class="container">
-        <el-container>
-            <el-header>
-            <div class="header-content admin-header-content">
-                <DashboardTabs activeTab="dashboard"></DashboardTabs>
-                <div class="search-area">
-                    <div class="search-card">
-                        <el-input v-model="tempSearch" size="small" :placeholder="$t('dashboard.searchPlaceholder')" @keyup.enter="handleSearch">
-                            <template #suffix>
-                                <font-awesome-icon icon="search" class="search-icon" @click="handleSearch"/>
-                            </template>
-                        </el-input>
+        <el-container direction="vertical">
+            <AdminHeader active-tab="dashboard" show-link-format @link-format="showUrlDialog = true">
+                <template #search>
+                    <div class="search-area">
+                        <div class="search-card" :class="{ 'is-settings-open': searchSettingsOpen }">
+                            <el-input ref="searchInput" v-model="tempSearch" size="small" :placeholder="$t('dashboard.searchPlaceholder')" @keyup.enter="handleSearch">
+                                <template #suffix>
+                                    <el-tooltip
+                                        ref="searchSettingsPopup"
+                                        :trigger="isMobileViewport() ? [] : 'hover'"
+                                        placement="bottom-start"
+                                        effect="light"
+                                        popper-class="el-dropdown__popper search-settings-popper"
+                                        :popper-style="{ padding: '0' }"
+                                        :focus-on-target="false"
+                                        :focus-on-show="false"
+                                        persistent
+                                        :show-after="150"
+                                        :hide-after="150"
+                                        @before-show="searchSettingsOpen = true"
+                                        @hide="searchSettingsOpen = false"
+                                    >
+                                        <template #default>
+                                            <button
+                                                type="button"
+                                                class="search-icon-trigger"
+                                                :aria-label="$t('dashboard.searchPlaceholder')"
+                                                @mousedown.prevent
+                                                @pointerdown="handleSearchIconPointerDown"
+                                                @pointermove="handleSearchIconPointerMove"
+                                                @pointerup="cancelSearchIconPress"
+                                                @pointercancel="cancelSearchIconPress"
+                                                @pointerleave="cancelSearchIconPress"
+                                                @contextmenu.prevent
+                                                @click="handleSearchIconClick"
+                                            >
+                                                <font-awesome-icon icon="search" class="search-icon" />
+                                            </button>
+                                        </template>
+                                        <template #content>
+                                            <div class="el-dropdown-menu modern-dropdown-menu search-result-menu" role="group" :aria-label="$t('dashboard.searchResultDisplay')" @mousedown.prevent>
+                                                <div class="search-result-settings-title">{{ $t('dashboard.searchResultDisplay') }}</div>
+                                                <button type="button" class="el-dropdown-menu__item search-result-option" :aria-pressed="searchResultDisplay === 'folders'" @click="selectSearchResultDisplay('folders')">
+                                                    <font-awesome-icon icon="folder-open" class="search-result-option-icon" />
+                                                    <span>{{ $t('dashboard.searchResultFolders') }}</span>
+                                                    <font-awesome-icon v-if="searchResultDisplay === 'folders'" icon="check" class="search-result-option-check" />
+                                                </button>
+                                                <button type="button" class="el-dropdown-menu__item search-result-option" :aria-pressed="searchResultDisplay === 'expanded'" @click="selectSearchResultDisplay('expanded')">
+                                                    <font-awesome-icon icon="list" class="search-result-option-icon" />
+                                                    <span>{{ $t('dashboard.searchResultExpanded') }}</span>
+                                                    <font-awesome-icon v-if="searchResultDisplay === 'expanded'" icon="check" class="search-result-option-check" />
+                                                </button>
+                                            </div>
+                                        </template>
+                                    </el-tooltip>
+                                </template>
+                            </el-input>
+                        </div>
+                        <FilterDropdown
+                            v-model:filters="filters"
+                            :channelNameOptions="channelNameOptions"
+                            @change="handleFilterChange"
+                        />
                     </div>
-                    <!-- 筛选下拉菜单 -->
-                    <FilterDropdown
-                        v-model:filters="filters"
-                        :channelNameOptions="channelNameOptions"
-                        @change="handleFilterChange"
-                    />
-                </div>
-                <div class="actions">
-                <el-tooltip :disabled="disableTooltip" :content="$t('dashboard.linkFormat')" placement="bottom" :show-after="1000">
-                    <span class="el-dropdown-link">
-                        <font-awesome-icon icon="link" class="header-icon" @click="showUrlDialog = true"></font-awesome-icon>
-                    </span>
-                </el-tooltip>
-                <el-tooltip :disabled="disableTooltip" :content="$t('dashboard.logout')" placement="bottom" :show-after="1000">
-                    <font-awesome-icon icon="sign-out-alt" class="header-icon" @click="handleLogout"></font-awesome-icon>
-                </el-tooltip>
-                </div>
-            </div>
-            </el-header>
-            <el-main class="main-container" :class="{ 'has-batch-toolbar': selectedFiles.length > 0 }">
+                </template>
+            </AdminHeader>
+            <el-main class="main-container" data-entry="up" :class="{ 'has-batch-toolbar': selectedFiles.length > 0 }">
             <!-- 目录导航 -->
             <div class="breadcrumb-container">
                 <DashboardCheckbox
@@ -177,7 +212,7 @@
                     <p class="empty-hint">{{ hasSearchOrFilter ? $t('dashboard.adjustSearchHint') : $t('dashboard.uploadHint') }}</p>
                 </div>
                 <!-- 文件夹和文件列表 -->
-                <template v-else v-for="(item, index) in paginatedTableData" :key="index">
+                <template v-else v-for="(item, index) in paginatedTableData" :key="`${item.isFolder ? 'folder' : 'file'}:${item.name}`">
                     <!-- 文件夹卡片 -->
                     <FolderCard 
                         v-if="isFolder(item)"
@@ -253,7 +288,7 @@
                 <template v-else>
                     <FileListItem
                         v-for="(item, index) in paginatedTableData"
-                        :key="index"
+                        :key="`${item.isFolder ? 'folder' : 'file'}:${item.name}`"
                         :item="item"
                         v-model:selected="item.selected"
                         :fileLink="getFileLink(item.name)"
@@ -408,6 +443,7 @@
         <TagManagementDialog
             v-model="showTagDialog"
             :fileId="currentTagFile"
+            :fileMetadata="tagFileMetadata"
             @tagsUpdated="handleTagsUpdated"
         />
 
@@ -445,7 +481,7 @@
 <script>
 import { mapGetters } from 'vuex';
 import JSZip from 'jszip';
-import DashboardTabs from '@/components/DashboardTabs.vue';
+import AdminHeader from '@/components/dashboard/AdminHeader.vue';
 import TagManagementDialog from '@/components/dashboard/TagManagementDialog.vue';
 import BatchTagDialog from '@/components/dashboard/BatchTagDialog.vue';
 import SkeletonLoader from '@/components/dashboard/SkeletonLoader.vue';
@@ -466,11 +502,13 @@ import { validateFolderPath } from '@/utils/pathValidator';
 import backgroundManager from '@/mixins/backgroundManager';
 import { ref } from 'vue';
 import { useDragSelect } from '@/utils/dashboard/useDragSelect.js';
+import { isImageFile, isVideoFile, isAudioFile } from '@/utils/mimeTypes';
 
 const SORT_FIELDS = ['time', 'size', 'rawName', 'fileName'];
 const SORT_ORDERS = ['asc', 'desc'];
+const SEARCH_RESULT_DISPLAYS = ['folders', 'expanded'];
 
-function getStoredSortValue(key, validValues, fallback) {
+function getStoredOption(key, validValues, fallback) {
     try {
         const value = localStorage.getItem(key);
         return validValues.includes(value) ? value : fallback;
@@ -495,11 +533,16 @@ data() {
         searchIncludeTags: '', // 包含的标签，逗号分隔
         searchExcludeTags: '', // 排除的标签，逗号分隔
         isSearchMode: false,
+        searchResultDisplay: getStoredOption('searchResultDisplay', SEARCH_RESULT_DISPLAYS, 'expanded'),
+        searchSettingsOpen: false,
+        searchIconPressTimer: null,
+        searchIconPressStart: null,
+        searchIconLongPressed: false,
         currentPage: 1,
         pageSize: 15,
         selectedFiles: [],
-        sortField: getStoredSortValue('sortField', SORT_FIELDS, 'time'),
-        sortOrder: getStoredSortValue('sortOrder', SORT_ORDERS, 'desc'),
+        sortField: getStoredOption('sortField', SORT_FIELDS, 'time'),
+        sortOrder: getStoredOption('sortOrder', SORT_ORDERS, 'desc'),
         isUploading: false,
         showdetailDialog: false,
         detailFile: null,
@@ -544,7 +587,7 @@ data() {
     }
 },
 components: {
-    DashboardTabs,
+    AdminHeader,
     TagManagementDialog,
     BatchTagDialog,
     SkeletonLoader,
@@ -585,6 +628,7 @@ setup() {
     };
 },
 computed: {
+    tagFileMetadata() { return this.tableData.find(file => file.name === this.currentTagFile)?.metadata || {}; },
     ...mapGetters(['adminUrlSettings', 'userConfig']),
     filteredTableData() {
         return this.tableData;
@@ -592,9 +636,9 @@ computed: {
     totalPages() {
         return Math.ceil(this.filteredTableData.length / this.pageSize) || 1;
     },
-    // 基于当前文件夹直接子文件和子文件夹数量计算的真实总页数
+    // 展开结果按递归文件总数分页，目录模式按直接子项分页。
     realTotalPages() {
-        const total = this.directFolderCount + this.directFileCount;
+        const total = this.recursiveSearchResults ? this.Number : this.directFolderCount + this.directFileCount;
         return Math.ceil(total / this.pageSize) || 1;
     },
     // 计算当前激活的筛选条件数量（数组形式）
@@ -604,6 +648,9 @@ computed: {
     // 判断是否处于搜索或筛选模式
     hasSearchOrFilter() {
         return this.isSearchMode || this.activeFilterCount > 0;
+    },
+    recursiveSearchResults() {
+        return this.hasSearchOrFilter && this.searchResultDisplay === 'expanded';
     },
     paginatedTableData() {
         const sortedData = this.sortData(this.filteredTableData);
@@ -886,6 +933,54 @@ methods: {
             i++;
         }
         return bytes.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    },
+    handleSearchIconPointerDown(event) {
+        this.cancelSearchIconPress();
+        this.searchIconLongPressed = false;
+        if (!['touch', 'pen'].includes(event.pointerType) || event.isPrimary === false) return;
+        this.searchIconPressStart = { x: event.clientX, y: event.clientY };
+        this.searchIconPressTimer = setTimeout(() => {
+            this.searchIconPressTimer = null;
+            this.searchIconLongPressed = true;
+            this.$refs.searchSettingsPopup.onOpen(event, 0);
+        }, 500);
+    },
+    handleSearchIconPointerMove(event) {
+        const start = this.searchIconPressStart;
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) {
+            this.searchIconLongPressed = true;
+            this.cancelSearchIconPress();
+        }
+    },
+    cancelSearchIconPress() {
+        clearTimeout(this.searchIconPressTimer);
+        this.searchIconPressTimer = null;
+        this.searchIconPressStart = null;
+    },
+    handleSearchIconClick(event) {
+        if (this.searchIconLongPressed) {
+            event.preventDefault();
+            return;
+        }
+        return this.handleSearch();
+    },
+    selectSearchResultDisplay(mode) {
+        this.$refs.searchInput.focus();
+        this.$refs.searchSettingsPopup.hide();
+        return this.setSearchResultDisplay(mode);
+    },
+    setSearchResultDisplay(mode) {
+        if (!SEARCH_RESULT_DISPLAYS.includes(mode) || mode === this.searchResultDisplay) return;
+        this.searchResultDisplay = mode;
+        try {
+            localStorage.setItem('searchResultDisplay', mode);
+        } catch (error) {
+            console.warn('Could not save search result display preference:', error);
+        }
+        if (this.hasSearchOrFilter) {
+            this.currentPage = 1;
+            return this.refreshFileList();
+        }
     },
     handleSearch() {
         this.search = this.tempSearch;
@@ -1302,10 +1397,11 @@ methods: {
                 this.searchIncludeTags,
                 this.searchExcludeTags,
                 60,
-                this.filters
+                this.filters,
+                this.recursiveSearchResults
             );
             // 获取新的文件列表后
-            await this.fetchFileList();
+            await this.fetchFileList({ preserveSelection: true });
         } catch (error) {
             this.$message.error(this.$t('dashboard.loadMoreFailed'));
         } finally {
@@ -1400,18 +1496,7 @@ methods: {
             videoElement.msRequestFullscreen();
         }
     },
-    handleLogout() {
-        const url = process.env.NODE_ENV === 'production' ? '/api/auth/logout' : '/api/api/auth/logout';
-        fetch(url, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ authType: 'admin' })
-        }).finally(() => {
-            this.$store.commit('setAdminLoggedIn', false);
-            this.$router.push('/adminLogin');
-        });
-    },
+
     handleSelectPage() {
         if (this.selectPage) {
             this.paginatedTableData.forEach(file => file.selected = false);
@@ -1655,38 +1740,9 @@ methods: {
                 link.click();
             });
     },
-    isVideo(file) {
-        // 排除音频文件
-        if (this.isAudio(file)) return false;
-        let flag = file.metadata?.FileType?.includes('video');
-        // 用文件名后缀判断是否为视频文件
-        if (!flag) {
-            const videoExtensions = ['mp4', 'webm', 'ogg', 'avi', 'mov', 'flv', 'wmv', 'mkv', 'rmvb', '3gp', 'mpg', 'mpeg', 'm4v', 'f4v', 'rm', 'asf', 'dat', 'ts', 'vob', 'swf', 'divx', 'xvid', 'm2ts', 'mts', 'm2v', '3g2', '3gp2', '3gpp', '3gpp2', 'mpe', 'm1v', 'mpv', 'mpv2', 'mp2v', 'm2t', 'm2ts', 'm2v', 'm4v'];
-            const extension = file.name.substring(file.name.lastIndexOf('.') + 1).toLowerCase();
-            flag = videoExtensions.includes(extension);
-        }
-        return flag;
-    },
-    isAudio(file) {
-        let flag = file.metadata?.FileType?.includes('audio');
-        // 用文件名后缀判断是否为音频文件
-        if (!flag) {
-            const audioExtensions = ['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a', 'ape', 'aiff', 'alac', 'opus', 'mid', 'midi', 'm4b', 'm4p', 'm4r', 'amr', 'au', 'ra', 'ram'];
-            const extension = file.name.substring(file.name.lastIndexOf('.') + 1).toLowerCase();
-            flag = audioExtensions.includes(extension);
-        }
-        return flag;
-    },
-    isImage(file) {
-        let flag = file.metadata?.FileType?.includes('image');
-        // 用文件名后缀判断是否为图片文件
-        if (!flag) {
-            const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'psd', 'ai', 'eps', 'raw', 'cr2', 'nef', 'orf', 'sr2', 'dng', 'arw', 'rw2', 'raf', 'pef', 'x3f', 'srf', 'erf', 'mrw', 'nrw', 'kdc', 'dcr', 'mef', 'mos', 'crw', 'raf', 'rwl', 'srw', '3fr', 'fff', 'iiq', 'qtk', 'bay', 'k25', 'kdc', 'dcs', 'drf', 'dng', 'erf', 'kdc', 'mdc', 'mef', 'mos', 'mrw', 'nef', 'nrw', 'orf', 'pef', 'ptx', 'pxn', 'r3d', 'raf', 'raw', 'rwl', 'rw2', 'rwz', 'sr2', 'srf', 'x3f'];
-            const extension = file.name.substring(file.name.lastIndexOf('.') + 1).toLowerCase();
-            flag = imageExtensions.includes(extension);
-        }
-        return flag;
-    },
+    isVideo: isVideoFile,
+    isAudio: isAudioFile,
+    isImage: isImageFile,
     getFileLink(filename) {
         const fileLink = process.env.NODE_ENV === 'production' ? `/file/${filename}?from=admin` : `/api/file/${filename}?from=admin`;
         return fileLink;
@@ -1798,9 +1854,10 @@ methods: {
                     this.searchIncludeTags,
                     this.searchExcludeTags,
                     neededFileCount,
-                    this.filters
+                    this.filters,
+                    this.recursiveSearchResults
                 );
-                await this.fetchFileList();
+                await this.fetchFileList({ preserveSelection: true });
             }
 
             this.currentPage = Math.min(targetPage, this.totalPages);
@@ -1812,9 +1869,9 @@ methods: {
     },
     // 判断是否为文件夹
     isFolder(item) {
-        // 如果是已经标记为文件夹的项目，直接返回true
-        if (item.isFolder) {
-            return true;
+        // 尊重文件列表的类型，避免把递归结果中的文件误判为文件夹。
+        if (typeof item.isFolder === 'boolean') {
+            return item.isFolder;
         }
         
         // 获取真实的文件路径（去除URL前缀）
@@ -1936,21 +1993,27 @@ methods: {
     },
     
     // 获取文件列表
-    async fetchFileList() {
+    async fetchFileList({ preserveSelection = false } = {}) {
         this.loading = true;
         try {
             // 从本地存储获取数据
             const data = fileManager.getLocalFileList();
+
+            // 追加分页数据时保留当前选择，用类型和路径区分文件与文件夹。
+            const selectedKeys = new Set(preserveSelection
+                ? this.tableData.filter(item => item.selected)
+                    .map(item => `${item.isFolder ? 'folder' : 'file'}:${item.name}`)
+                : []);
             
             // 解析返回的数据
-            const folders = new Set(data.directories || []);
+            const folders = new Set(this.recursiveSearchResults ? [] : data.directories || []);
             const files = data.files || [];
 
             // 处理文件夹数据
             const folderItems = Array.from(folders).map(folder => ({
                 name: folder,
                 isFolder: true,
-                selected: false,
+                selected: selectedKeys.has(`folder:${folder}`),
                 metadata: { FileName: folder.split('/').pop() }
             }));
 
@@ -1958,7 +2021,7 @@ methods: {
             const fileItems = files.map(file => ({
                 name: file.name,
                 isFolder: false,
-                selected: false,
+                selected: selectedKeys.has(`file:${file.name}`),
                 metadata: file.metadata
             }));
 
@@ -1990,7 +2053,8 @@ methods: {
                 this.searchKeywords,
                 this.searchIncludeTags,
                 this.searchExcludeTags,
-                this.filters
+                this.filters,
+                this.recursiveSearchResults
             );
             if (success) {
                 await this.fetchFileList();
@@ -2034,28 +2098,22 @@ methods: {
         }
         this.showBatchTagDialog = true;
     },
-    async handleTagsUpdated(tags) {
-        // 更新本地文件数据中的标签
-        const fileIndex = this.tableData.findIndex(file => file.name === this.currentTagFile);
-        if (fileIndex !== -1) {
-            // 更新 tableData 中的标签
-            if (!this.tableData[fileIndex].metadata) {
-                this.tableData[fileIndex].metadata = {};
-            }
-            this.tableData[fileIndex].metadata.Tags = tags;
-            
-            // 如果详情对话框正在显示这个文件，也更新详情数据
-            if (this.showdetailDialog && this.detailFile?.name === this.currentTagFile) {
-                if (!this.detailFile.metadata) {
-                    this.detailFile.metadata = {};
-                }
-                this.detailFile.metadata.Tags = tags;
-            }
-        }
+    handleTagsUpdated(tags) {
+        this.handleBatchTagsUpdated([{ fileId: this.currentTagFile, tags, saved: true }]);
     },
-    async handleBatchTagsUpdated() {
-        // 刷新文件列表以显示更新后的标签
-        await this.refreshLocalFileList();
+    handleBatchTagsUpdated(results) {
+        const updates = new Map(results.filter(result => result.saved).map(result => [result.fileId, result.tags]));
+        for (const file of this.tableData) {
+            if (updates.has(file.name)) file.metadata = { ...file.metadata, Tags: updates.get(file.name) };
+        }
+        if (this.detailFile && updates.has(this.detailFile.name)) {
+            this.detailFile.metadata = { ...this.detailFile.metadata, Tags: updates.get(this.detailFile.name) };
+        }
+        const cached = fileManager.getLocalFileList();
+        for (const file of cached.files || []) {
+            if (updates.has(file.name)) file.metadata = { ...file.metadata, Tags: updates.get(file.name) };
+        }
+        fileManager.updateFileListCache(cached);
     },
     handleMetadataUpdated(fileId, updatedMetadata) {
         // 更新 tableData 中对应文件的 metadata
@@ -2193,6 +2251,7 @@ mounted() {
     }
 },
 beforeUnmount() {
+    this.cancelSearchIconPress();
     window.removeEventListener('resize', this.updateResponsivePageSize);
 }
 
@@ -2228,18 +2287,9 @@ beforeUnmount() {
 }
 
 @media (max-width: 768px) {
-    .search-card :deep(.el-input__inner) {
-        height: 28px;
-        font-size: 0.85em;
-        width: 50vw;
-    }
-    
-    .search-card :deep(.el-input__wrapper) {
-        padding: 0 12px;
-    }
-    
-    .search-card :deep(.el-input__inner:focus) {
-        width: 65vw;
+    .pagination-container :deep(.btn-prev),
+    .pagination-container :deep(.btn-next) {
+        display: none !important;
     }
 }
 
@@ -2460,25 +2510,83 @@ beforeUnmount() {
 
 /* 搜索区域样式（包含搜索框和筛选按钮） */
 .search-area {
-    margin-left: auto;
-    margin-right: 20px;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 @media (max-width: 768px) {
     .search-area {
-        margin-right: 0;
-        margin-left: 0;
-        margin-top: 10px;
+        width: 100%;
         gap: 6px;
     }
 }
 
 /* 搜索卡片样式 */
+.search-icon-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-touch-callout: none;
+    outline: none;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.search-icon-trigger:focus-visible {
+    outline: 2px solid var(--primary-color-accent);
+    outline-offset: 3px;
+    border-radius: 3px;
+}
+
+.search-card:focus-within .search-icon-trigger,
+.search-card.is-settings-open .search-icon-trigger {
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.search-result-menu {
+    min-width: 200px;
+}
+
+.search-result-option {
+    width: 100%;
+    font-family: inherit;
+    text-align: left;
+}
+
+.search-result-settings-title {
+    padding: 6px 12px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--el-text-color-secondary);
+}
+
+.search-result-option-icon {
+    width: 16px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.search-result-option-check {
+    margin-left: auto;
+    padding-left: 12px;
+    color: var(--primary-color-accent);
+}
+
 .search-card {
     display: flex;
     align-items: center;
+    min-width: 0;
 }
 .search-card :deep(.el-input) {
     background: transparent !important;
@@ -2486,6 +2594,7 @@ beforeUnmount() {
     box-shadow: none !important;
 }
 .search-card :deep(.el-input__wrapper) {
+    min-width: 0;
     padding: 0 14px;
     border-radius: 20px;
     background: var(--glass-bg);
@@ -2499,8 +2608,9 @@ beforeUnmount() {
     width: 280px;
     height: 40px;
     font-size: 1.2em;
+    min-width: 0;
     border: none;
-    transition: width 0.3s;
+    transition: width 0.25s ease;
     background: none;
 }
 
@@ -2523,18 +2633,30 @@ beforeUnmount() {
         padding: 0 12px;
     }
 
+    .search-card {
+        flex: 1;
+    }
+
     .search-card :deep(.el-input__inner) {
-        width: 45vw;
+        width: 100%;
         height: 32px;
         font-size: 1em;
     }
 }
-.search-card :deep(.el-input__inner:focus) {
+.search-card:focus-within :deep(.el-input__inner),
+.search-card.is-settings-open :deep(.el-input__inner) {
     width: 350px;
 }
 @media (max-width: 768px) {
-    .search-card :deep(.el-input__inner:focus) {
-        width: 55vw;
+    .search-card:focus-within :deep(.el-input__inner),
+    .search-card.is-settings-open :deep(.el-input__inner) {
+        width: 100%;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .search-card :deep(.el-input__inner),
+    .search-card :deep(.el-input__inner::placeholder) {
+        transition: none;
     }
 }
 .search-icon {
@@ -2546,12 +2668,13 @@ beforeUnmount() {
     transform: scale(0.8);
     pointer-events: none;
 }
-.search-card:focus-within .search-icon {
+.search-card:focus-within .search-icon,
+.search-card.is-settings-open .search-icon {
     opacity: 1;
     transform: scale(1);
     pointer-events: auto;
 }
-.search-card:focus-within .search-icon:hover {
+.search-icon-trigger:hover .search-icon {
     color: var(--primary-color-accent);
     transform: scale(1.2);
 }
@@ -2576,8 +2699,8 @@ beforeUnmount() {
 
 @media (max-width: 768px) {
     .main-container {
-        margin-top: 12vh;
-        padding: 16px 10px;
+        margin-top: 0;
+        padding: 8px 10px 16px;
     }
     .main-container.has-batch-toolbar {
         padding-bottom: 86px;

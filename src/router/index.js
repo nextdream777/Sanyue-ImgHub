@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import store from '../store'
 import axios from '@/utils/axios'
 import i18n from '@/locales'
+import { OverlayScrollbars } from 'overlayscrollbars'
 
 // 通用的管理员认证守卫
 const adminAuthGuard = (to, from, next) => {
@@ -13,12 +14,14 @@ const adminAuthGuard = (to, from, next) => {
 
     // 不需要管理端认证，直接放行
     if (!data.adminRequired) {
+      store.commit('beginAdminAccess', { required: false, fresh: !['dashboard', 'systemConfig', 'customerConfig'].includes(from.name) })
       store.commit('setAdminLoggedIn', true)
       return next()
     }
 
     // 需要认证，检查是否有有效的 admin session
     if (data.valid && data.authType === 'admin') {
+      store.commit('beginAdminAccess', { required: true, fresh: false })
       store.commit('setAdminLoggedIn', true)
       return next()
     }
@@ -164,7 +167,19 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(process.env.BASE_URL),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (!['dashboard', 'customerConfig', 'systemConfig'].includes(to.name)) return false
+    if (to.path === from.path && (to.name !== 'systemConfig' || to.hash === from.hash)) return false
+
+    const position = { ...(savedPosition || { left: 0, top: 0 }), behavior: 'instant' }
+    const scroller = OverlayScrollbars(document.body)?.elements().scrollOffsetElement
+    if (scroller && scroller !== document.scrollingElement) {
+      scroller.scrollTo(position)
+      return false
+    }
+    return position
+  }
 })
 
 export default router

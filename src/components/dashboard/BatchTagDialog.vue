@@ -3,124 +3,79 @@
         :title="$t('batchTag.title')"
         v-model="visible"
         :width="dialogWidth"
+        :before-close="beforeClose"
         @close="handleClose"
     >
-        <div class="batch-tag-container">
-            <el-tabs v-model="activeTab" type="border-card">
-                <!-- 添加标签 -->
-                <el-tab-pane :label="$t('batchTag.addTab')" name="add">
-                    <div class="tab-content">
-                        <p class="tab-description">{{ $t('batchTag.addDescription', { count: fileCount }) }}</p>
-
-                        <div class="input-section">
-                            <el-input
-                                v-model="inputTag"
-                                :placeholder="$t('batchTag.inputPlaceholder')"
-                                @keyup.enter="handleAddInputTag"
-                                @input="handleInputChange"
-                                clearable
-                            >
-                                <template #append>
-                                    <el-button @click="handleAddInputTag" type="primary">
-                                        <font-awesome-icon icon="plus"/>
-                                    </el-button>
-                                </template>
-                            </el-input>
-
-                            <!-- 自动完成建议 -->
-                            <div v-if="showSuggestions && suggestions.length > 0" class="suggestions-panel">
-                                <div
-                                    v-for="tag in suggestions"
-                                    :key="tag"
-                                    class="suggestion-item"
-                                    @click="selectSuggestion(tag)"
-                                >
-                                    {{ tag }}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="tags-to-add-section">
+        <div class="tag-dialog-content batch-tag-container">
+            <div class="tag-file-summary"><font-awesome-icon icon="images" /><span>{{ $t('batchTag.selectedFiles', { count: fileCount }) }}</span></div>
+            <el-alert v-if="pendingIndexIds.length" :title="$t('tagManagement.indexPending')" type="warning" show-icon :closable="false">
+                <el-button size="small" :loading="loading" :disabled="aiBusy" @click="repairIndex"><font-awesome-icon icon="redo" /> {{ $t('aiTags.retry') }}</el-button>
+            </el-alert>
+            <el-tabs v-model="activeTab" class="tag-operation-tabs" :before-leave="beforeTabChange">
+                <el-tab-pane name="add">
+                    <template #label><span class="tag-tab-label"><font-awesome-icon icon="plus" /><span>{{ $t('batchTag.addTab') }}</span></span></template>
+                    <section class="tag-section">
+                        <div class="tag-section-header">
+                            <span class="tag-section-icon"><font-awesome-icon icon="tags" /></span>
                             <h4>{{ $t('batchTag.pendingTags') }}</h4>
-                            <div v-if="tagsToAdd.length > 0" class="tags-container">
-                                <el-tag
-                                    v-for="tag in tagsToAdd"
-                                    :key="tag"
-                                    closable
-                                    @close="removeFromToAdd(tag)"
-                                    class="tag-item"
-                                >
-                                    {{ tag }}
-                                </el-tag>
-                            </div>
-                            <div v-else class="empty-message">
-                                {{ $t('batchTag.noPendingTags') }}
+                            <div class="tag-section-actions">
+                                <span class="tag-count">{{ tagsToAdd.length }}</span>
+                                <el-tooltip :content="$t('batchTag.addDescription', { count: fileCount })" placement="top">
+                                    <button type="button" class="tag-help-button" :aria-label="$t('batchTag.addDescription', { count: fileCount })"><font-awesome-icon icon="question-circle" /></button>
+                                </el-tooltip>
                             </div>
                         </div>
-
-                        <div class="action-buttons">
-                            <el-button
-                                type="primary"
-                                @click="executeAddTags"
-                                :loading="loading"
-                                :disabled="tagsToAdd.length === 0"
-                            >
-                                {{ $t('batchTag.addToAllFiles') }}
-                            </el-button>
+                        <div class="input-section">
+                            <div class="tag-input-row">
+                                <el-input v-model="inputTag" :disabled="loading || aiBusy" :placeholder="$t('batchTag.inputPlaceholder')" @keyup.enter="handleAddInputTag" @input="handleInputChange" clearable>
+                                    <template #prefix><font-awesome-icon icon="hashtag" /></template>
+                                </el-input>
+                                <el-button class="tag-add-button" type="primary" :disabled="loading || aiBusy || !inputTag.trim()" :aria-label="$t('batchTag.addTab')" @click="handleAddInputTag"><font-awesome-icon icon="plus" /></el-button>
+                            </div>
+                            <div v-if="showSuggestions && suggestions.length" class="suggestions-panel">
+                                <button v-for="tag in suggestions" :key="tag" type="button" class="suggestion-item" :disabled="loading || aiBusy" @click="selectSuggestion(tag)"><font-awesome-icon icon="hashtag" /><span>{{ tag }}</span></button>
+                            </div>
                         </div>
-                    </div>
+                        <div v-if="tagsToAdd.length" class="tags-container">
+                            <el-tag v-for="tag in tagsToAdd" :key="tag" :closable="!loading && !aiBusy" @close="removeFromToAdd(tag)" class="tag-chip" round>{{ tag }}</el-tag>
+                        </div>
+                        <div v-else class="empty-message"><font-awesome-icon icon="tag" /><span>{{ $t('batchTag.noPendingTags') }}</span></div>
+                        <div class="action-buttons"><el-button type="primary" @click="executeAddTags" :loading="loading" :disabled="!tagsToAdd.length || !fileCount"><font-awesome-icon v-if="!loading" icon="plus" />{{ $t('batchTag.addToAllFiles') }}</el-button></div>
+                    </section>
                 </el-tab-pane>
-
-                <!-- 移除标签 -->
-                <el-tab-pane :label="$t('batchTag.removeTab')" name="remove">
-                    <div class="tab-content">
-                        <p class="tab-description">{{ $t('batchTag.removeDescription') }}</p>
-
-                        <div v-if="commonTags.length > 0" class="common-tags-section">
+                <el-tab-pane name="remove">
+                    <template #label><span class="tag-tab-label"><font-awesome-icon icon="minus" /><span>{{ $t('batchTag.removeTab') }}</span></span></template>
+                    <section class="tag-section">
+                        <div class="tag-section-header">
+                            <span class="tag-section-icon muted"><font-awesome-icon icon="tags" /></span>
                             <h4>{{ $t('batchTag.commonTags') }}</h4>
-                            <div class="tags-container">
-                                <el-tag
-                                    v-for="tag in commonTags"
-                                    :key="tag"
-                                    closable
-                                    @close="handleRemoveCommonTag(tag)"
-                                    class="tag-item"
-                                    type="warning"
-                                >
-                                    {{ tag }}
-                                </el-tag>
+                            <div class="tag-section-actions">
+                                <span class="tag-count">{{ commonTags.length }}</span>
+                                <el-tooltip :content="$t('batchTag.removeDescription')" placement="top">
+                                    <button type="button" class="tag-help-button" :aria-label="$t('batchTag.removeDescription')"><font-awesome-icon icon="question-circle" /></button>
+                                </el-tooltip>
                             </div>
                         </div>
-                        <div v-else class="empty-message">
-                            {{ $t('batchTag.noCommonTags') }}
+                        <div v-if="commonTags.length" class="tags-container">
+                            <el-tag v-for="tag in commonTags" :key="tag" :closable="!loading && !aiBusy" @close="handleRemoveCommonTag(tag)" class="tag-chip" type="warning" round>{{ tag }}</el-tag>
                         </div>
-                    </div>
+                        <div v-else class="empty-message"><font-awesome-icon icon="tag" /><span>{{ $t('batchTag.noCommonTags') }}</span></div>
+                    </section>
                 </el-tab-pane>
-
-                <!-- 清空标签 -->
-                <el-tab-pane :label="$t('batchTag.clearTab')" name="clear">
-                    <div class="tab-content">
-                        <p class="tab-description">{{ $t('batchTag.clearDescription', { count: fileCount }) }}</p>
-
-                        <el-alert
-                            :title="$t('batchTag.clearWarningTitle')"
-                            type="warning"
-                            :description="$t('batchTag.clearWarningDesc')"
-                            :closable="false"
-                            style="margin-bottom: 20px;"
-                            center
-                        />
-
-                        <div class="action-buttons">
-                            <el-button
-                                type="danger"
-                                @click="handleClearAllTags"
-                                :loading="loading"
-                            >
-                                {{ $t('batchTag.confirmClearAll') }}
-                            </el-button>
+                <el-tab-pane name="clear">
+                    <template #label><span class="tag-tab-label"><font-awesome-icon icon="trash-alt" /><span>{{ $t('batchTag.clearTab') }}</span></span></template>
+                    <section class="tag-section tag-danger-section">
+                        <div class="tag-section-header">
+                            <span class="tag-section-icon danger"><font-awesome-icon icon="trash-alt" /></span>
+                            <h4>{{ $t('batchTag.clearTab') }}</h4>
                         </div>
-                    </div>
+                        <el-alert :title="$t('batchTag.clearWarningDesc')" type="warning" :closable="false" show-icon />
+                        <div class="action-buttons"><el-button type="danger" @click="handleClearAllTags" :loading="loading" :disabled="!fileCount"><font-awesome-icon v-if="!loading" icon="trash-alt" />{{ $t('batchTag.confirmClearAll') }}</el-button></div>
+                    </section>
+                </el-tab-pane>
+                <el-tab-pane name="ai" lazy>
+                    <template #label><span class="tag-tab-label"><AIIcon /><span>{{ $t('aiTags.tab') }}</span></span></template>
+                    <AITagPanel v-if="visible" :files="selectedFilesOnly" :disabled="loading" @busy="aiBusy = $event" @applied="handleAIResults" />
                 </el-tab-pane>
             </el-tabs>
         </div>
@@ -130,9 +85,12 @@
 <script>
 import { ElMessage, ElMessageBox } from 'element-plus';
 import fetchWithAuth from '@/utils/fetchWithAuth';
+import AITagPanel from './AITagPanel.vue';
+import AIIcon from '@/components/icons/AIIcon.vue';
 
 export default {
     name: 'BatchTagDialog',
+    components: { AITagPanel, AIIcon },
     props: {
         modelValue: {
             type: Boolean,
@@ -154,6 +112,8 @@ export default {
             suggestions: [],
             showSuggestions: false,
             loading: false,
+            pendingIndexIds: [],
+            aiBusy: false,
             debounceTimer: null
         };
     },
@@ -167,7 +127,7 @@ export default {
             }
         },
         dialogWidth() {
-            return window.innerWidth < 768 ? '90%' : '600px';
+            return 'min(600px, 90vw)';
         },
         selectedFilesOnly() {
             // 排除文件夹，只保留文件
@@ -194,50 +154,56 @@ export default {
             }
         }
     },
+    beforeUnmount() { clearTimeout(this.debounceTimer); },
     methods: {
+        beforeClose(done) { if (!this.aiBusy && !this.loading) done(); },
+        beforeTabChange() { return !this.aiBusy && !this.loading; },
+        handleAIResults(results) { this.updateSavedTags(results); },
+        updateSavedTags(results) {
+            const pending = new Set(this.pendingIndexIds);
+            for (const result of results) {
+                if (result.saved) {
+                    if (result.indexPending) pending.add(result.fileId); else pending.delete(result.fileId);
+                }
+            }
+            this.pendingIndexIds = [...pending];
+            this.$emit('tagsUpdated', results);
+            this.loadCommonTags(results);
+        },
+        finishTagOperation(data, successKey) {
+            this.updateSavedTags(data.results);
+            if (data.success) ElMessage.success(this.$t(successKey, { count: data.updated }));
+            else ElMessage.warning(this.$t('batchTag.partialSave', {
+                saved: data.results.filter(result => result.saved && !result.indexPending).length,
+                total: data.results.length
+            }));
+            return data.success;
+        },
+        async repairIndex() {
+            if (this.loading || this.aiBusy) return;
+            this.loading = true;
+            try {
+                const response = await fetchWithAuth('/api/manage/tags/batch', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileIds: this.pendingIndexIds, tags: [], action: 'add', repairIndexIds: this.pendingIndexIds })
+                });
+                if (!response.ok) throw new Error();
+                this.finishTagOperation(await response.json(), 'batchTag.addSuccess');
+            } catch { ElMessage.error(this.$t('batchTag.addFailed')); }
+            finally { this.loading = false; }
+        },
         resetData() {
             this.tagsToAdd = [];
             this.inputTag = '';
             this.showSuggestions = false;
             this.activeTab = 'add';
+            this.pendingIndexIds = [];
         },
 
-        async loadCommonTags() {
-            if (this.selectedFilesOnly.length === 0) {
-                this.commonTags = [];
-                return;
-            }
-
-            try {
-                // 获取所有文件的标签
-                const tagPromises = this.selectedFilesOnly.map(file =>
-                    fetchWithAuth(`/api/manage/tags/${encodeURIComponent(file.name)}`, {
-                        method: 'GET'
-                    })
-                );
-
-                const responses = await Promise.all(tagPromises);
-                const allTags = [];
-
-                for (const response of responses) {
-                    if (response.ok) {
-                        const data = await response.json();
-                        allTags.push(data.tags || []);
-                    }
-                }
-
-                // 找出共有标签
-                if (allTags.length > 0) {
-                    this.commonTags = allTags[0].filter(tag =>
-                        allTags.every(tags => tags.includes(tag))
-                    );
-                } else {
-                    this.commonTags = [];
-                }
-            } catch (error) {
-                console.error('Error loading common tags:', error);
-                ElMessage.error(this.$t('batchTag.loadCommonTagsFailed'));
-            }
+        loadCommonTags(results = []) {
+            const updates = new Map(results.filter(result => result.saved).map(result => [result.fileId, result.tags]));
+            const allTags = this.selectedFilesOnly.map(file => updates.get(file.name) || file.metadata?.Tags || []);
+            this.commonTags = allTags.length ? allTags[0].filter(tag => allTags.every(tags => tags.includes(tag))) : [];
         },
 
         handleInputChange() {
@@ -278,6 +244,7 @@ export default {
         },
 
         handleAddInputTag() {
+            if (this.loading || this.aiBusy) return;
             const tag = this.inputTag.trim();
 
             if (!tag) {
@@ -297,6 +264,7 @@ export default {
         },
 
         removeFromToAdd(tag) {
+            if (this.loading || this.aiBusy) return;
             const index = this.tagsToAdd.indexOf(tag);
             if (index > -1) {
                 this.tagsToAdd.splice(index, 1);
@@ -304,6 +272,7 @@ export default {
         },
 
         async executeAddTags() {
+            if (this.loading || this.aiBusy) return;
             if (this.tagsToAdd.length === 0) {
                 ElMessage.warning(this.$t('batchTag.pleaseAddTags'));
                 return;
@@ -319,6 +288,7 @@ export default {
                     },
                     body: JSON.stringify({
                         fileIds: this.fileIds,
+                        repairIndexIds: this.pendingIndexIds,
                         action: 'add',
                         tags: this.tagsToAdd
                     })
@@ -326,13 +296,7 @@ export default {
 
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.success || data.updated > 0) {
-                        ElMessage.success(this.$t('batchTag.addSuccess', { count: data.updated }));
-                        this.$emit('tagsUpdated');
-                        this.tagsToAdd = [];
-                    } else {
-                        throw new Error(this.$t('batchTag.addFailed'));
-                    }
+                    if (this.finishTagOperation(data, 'batchTag.addSuccess')) this.tagsToAdd = [];
                 } else {
                     throw new Error(this.$t('batchTag.addFailed'));
                 }
@@ -345,6 +309,7 @@ export default {
         },
 
         async handleRemoveCommonTag(tag) {
+            if (this.loading || this.aiBusy) return;
             this.loading = true;
 
             try {
@@ -355,6 +320,7 @@ export default {
                     },
                     body: JSON.stringify({
                         fileIds: this.fileIds,
+                        repairIndexIds: this.pendingIndexIds,
                         action: 'remove',
                         tags: [tag]
                     })
@@ -362,13 +328,7 @@ export default {
 
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.success || data.updated > 0) {
-                        ElMessage.success(this.$t('batchTag.removeSuccess', { count: data.updated }));
-                        this.$emit('tagsUpdated');
-                        await this.loadCommonTags();
-                    } else {
-                        throw new Error(this.$t('batchTag.removeFailed'));
-                    }
+                    this.finishTagOperation(data, 'batchTag.removeSuccess');
                 } else {
                     throw new Error(this.$t('batchTag.removeFailed'));
                 }
@@ -381,6 +341,7 @@ export default {
         },
 
         handleClearAllTags() {
+            if (this.loading || this.aiBusy) return;
             ElMessageBox.confirm(
                 this.$t('batchTag.clearConfirmMessage', { count: this.fileCount }),
                 this.$t('batchTag.clearConfirmTitle'),
@@ -397,6 +358,7 @@ export default {
         },
 
         async executeClearTags() {
+            if (this.loading || this.aiBusy) return;
             this.loading = true;
 
             try {
@@ -407,6 +369,7 @@ export default {
                     },
                     body: JSON.stringify({
                         fileIds: this.fileIds,
+                        repairIndexIds: this.pendingIndexIds,
                         action: 'set',
                         tags: []
                     })
@@ -414,13 +377,7 @@ export default {
 
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.success || data.updated > 0) {
-                        ElMessage.success(this.$t('batchTag.clearSuccess', { count: data.updated }));
-                        this.$emit('tagsUpdated');
-                        this.commonTags = [];
-                    } else {
-                        throw new Error(this.$t('batchTag.clearFailed'));
-                    }
+                    this.finishTagOperation(data, 'batchTag.clearSuccess');
                 } else {
                     throw new Error(this.$t('batchTag.clearFailed'));
                 }
@@ -433,89 +390,11 @@ export default {
         },
 
         handleClose() {
+            if (this.aiBusy || this.loading) return;
             this.visible = false;
         }
     }
 };
 </script>
 
-<style scoped>
-.batch-tag-container {
-    padding: 0;
-}
-
-.tab-content {
-    padding: 20px;
-}
-
-.tab-description {
-    margin: 0 0 15px 0;
-    color: var(--el-text-color-regular);
-    font-size: 14px;
-}
-
-.input-section {
-    position: relative;
-    margin-bottom: 20px;
-}
-
-.suggestions-panel {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: var(--admin-dashboard-tag-suggestion-bg-color);
-    border: 1px solid var(--admin-dashboard-tag-suggestion-border-color);
-    border-radius: 4px;
-    box-shadow: var(--admin-dashboard-tag-suggestion-box-shadow);
-    max-height: 200px;
-    overflow-y: auto;
-    z-index: 1000;
-    margin-top: 4px;
-}
-
-.suggestion-item {
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.suggestion-item:hover {
-    background-color: var(--admin-dashboard-tag-suggestion-item-hover-bg-color);
-}
-
-.tags-to-add-section,
-.common-tags-section {
-    margin-bottom: 20px;
-}
-
-.tags-to-add-section h4,
-.common-tags-section h4 {
-    margin: 0 0 10px 0;
-    font-size: 14px;
-    color: var(--el-text-color-regular);
-}
-
-.tags-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    min-height: 40px;
-}
-
-.tag-item {
-    cursor: default;
-}
-
-.empty-message {
-    color: var(--el-text-color-secondary);
-    font-size: 13px;
-    padding: 10px 0;
-}
-
-.action-buttons {
-    margin-top: 20px;
-    display: flex;
-    justify-content: flex-end;
-}
-</style>
+<style scoped src="@/styles/tag-dialog.css"></style>

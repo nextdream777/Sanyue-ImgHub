@@ -8,7 +8,10 @@
             :class="{ 'is-active': activeIndex === item.index }"
             @click="handleSelect(item.index)"
         >
-            <font-awesome-icon :icon="item.icon" class="menu-icon" />
+            <span class="menu-icon">
+                <AIIcon v-if="item.index === 'ai'" class="menu-glyph" />
+                <font-awesome-icon v-else :icon="item.icon" class="menu-glyph" />
+            </span>
             <span class="menu-text">{{ $t(item.titleKey) }}</span>
         </div>
     </div>
@@ -20,8 +23,11 @@
 </template>
 
 <script>
+import AIIcon from '@/components/icons/AIIcon.vue';
+
 export default {
 name: 'SysConfigTabs',
+components: { AIIcon },
 props: {
     activeIndex: {
         type: String,
@@ -40,6 +46,7 @@ data() {
             { index: 'upload', icon: 'cloud-upload', titleKey: 'sysConfigTabs.uploadSettings' },
             { index: 'security', icon: 'shield', titleKey: 'sysConfigTabs.securitySettings' },
             { index: 'page', icon: 'pager', titleKey: 'sysConfigTabs.pageSettings' },
+            { index: 'ai', titleKey: 'sysAI.title' },
             { index: 'others', icon: 'cog', titleKey: 'sysConfigTabs.otherSettings' }
         ]
     };
@@ -101,7 +108,7 @@ mounted() {
     this.$nextTick(() => this.measureWidth());
     window.addEventListener('resize', this.checkMobile);
 },
-beforeDestroy() {
+beforeUnmount() {
     window.removeEventListener('resize', this.checkMobile);
 }
 };
@@ -132,20 +139,6 @@ beforeDestroy() {
     width: 56px;
 }
 
-/* 深色模式 */
-html.dark .sidebar-container {
-    background: var(--glass-bg);
-    box-shadow: none;
-}
-
-.sidebar-container:hover {
-    box-shadow: none;
-}
-
-html.dark .sidebar-container:hover {
-    box-shadow: none;
-}
-
 .menu-list {
     padding: 8px;
 }
@@ -154,7 +147,7 @@ html.dark .sidebar-container:hover {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    padding: 12px 12px 12px 0;
+    padding: 0 12px 0 0;
     height: 42px;
     box-sizing: border-box;
     border-radius: 10px;
@@ -184,14 +177,27 @@ html.dark .menu-item.is-active {
 }
 
 .menu-icon {
+    display: grid;
+    place-items: center;
     width: 40px;
     min-width: 40px;
+    height: 20px;
     font-size: 16px;
     flex-shrink: 0;
-    text-align: center;
+    line-height: 1;
+}
+
+.menu-icon > .menu-glyph {
+    display: block;
+    width: 16px;
+    height: 16px;
 }
 
 .menu-text {
+    display: flex;
+    align-items: center;
+    height: 20px;
+    line-height: 20px;
     font-size: 14px;
     font-weight: 500;
     white-space: nowrap;

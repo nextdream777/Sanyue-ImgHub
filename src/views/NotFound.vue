@@ -5,7 +5,7 @@
     
     <div class="not-found-content">
       <!-- 返回首页按钮 -->
-      <div class="back-button-wrapper">
+      <div class="back-button-wrapper" data-entry="left">
         <el-button 
           class="back-button" 
           @click="goHome"
@@ -17,7 +17,7 @@
       </div>
 
       <!-- 404动画图标 -->
-      <div class="error-animation">
+      <div class="error-animation" data-entry="down">
         <div class="error-number">
           <span class="four">4</span>
           <span class="zero">0</span>
@@ -29,7 +29,7 @@
       </div>
       
       <!-- 错误信息 -->
-      <div class="error-info">
+      <div class="error-info" data-entry="up">
         <h1 class="error-title">页面走丢了</h1>
         <p class="error-description">
           抱歉，您访问的页面可能已被删除、更名或暂时不可用
@@ -246,11 +246,7 @@ export default {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* 错误信息 */
-.error-info {
-  animation: fadeInUp 1s ease-out 0.5s both;
-}
-
+/* 错误信息的入场位移与渐显由入口控制器统一处理。 */
 .error-title {
   font-size: 2rem;
   font-weight: 700;
@@ -305,10 +301,6 @@ export default {
 }
 
 /* 帮助链接 */
-.help-links {
-  animation: fadeInUp 1s ease-out 1s both;
-}
-
 .help-text {
   margin-bottom: 1rem;
   opacity: 0.7;
@@ -435,17 +427,6 @@ export default {
   50% {
     transform: translateY(-25px) rotate(180deg);
     opacity: 0.3;
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 

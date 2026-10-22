@@ -119,9 +119,29 @@
                         <div class="upload-list-dashboard-action">
                             <div class="modern-action-group">
                                 <el-tooltip :disabled="disableTooltip" :content="$t('upload.copyAll')" placement="top" :show-after="1000">
-                                    <button class="modern-action-btn modern-action-btn-copy" @click="copyAll">
-                                        <font-awesome-icon icon="copy" />
-                                    </button>
+                                    <el-dropdown trigger="hover" @command="copyAll">
+                                        <button
+                                            type="button"
+                                            class="modern-action-btn modern-action-btn-copy"
+                                            :aria-label="`${$t('upload.copyAll')} (${defaultCopyFormat.label})`"
+                                            @click="copyAll()"
+                                        >
+                                            <font-awesome-icon icon="copy" />
+                                            <span class="copy-format-badge" aria-hidden="true">{{ defaultCopyFormat.initial }}</span>
+                                        </button>
+                                        <template #dropdown>
+                                            <el-dropdown-menu class="modern-dropdown-menu">
+                                                <el-dropdown-item
+                                                    v-for="format in alternativeCopyFormats"
+                                                    :key="format.value"
+                                                    :command="format.value"
+                                                >
+                                                    <font-awesome-icon :icon="format.icon" class="copy-format-icon" aria-hidden="true" />
+                                                    {{ format.label }}
+                                                </el-dropdown-item>
+                                            </el-dropdown-menu>
+                                        </template>
+                                    </el-dropdown>
                                 </el-tooltip>
                                 <el-tooltip v-if="unlocatedDoneCount >= 2" :disabled="disableTooltip" content="一键批量标定未定位照片" placement="top" :show-after="1000">
                                     <button class="modern-action-btn modern-action-btn-geo" @click="openBatchGeoModal">
@@ -220,6 +240,8 @@ import { buildFileUrls, updateFileListUrls, getUrlByFormat } from '@/utils/uploa
 import { computeSha256 } from '@/utils/upload/sha256'
 import { extractExifGps } from '@/utils/exifReader'
 import { wgs84ToGcj02, gcj02ToWgs84 } from '@/utils/coordTransform'
+import { isAnimatedImage } from '@/utils/upload/animatedImage'
+import { ensureFileType, getFileExtension, getFileTypeCategory, normalizeMimeType, resolveFileType } from '@/utils/mimeTypes'
 import {
     collectFilesFromDataTransferItems,
     filesToUploadEntries,
@@ -227,6 +249,13 @@ import {
     joinUploadFolder
 } from '@/utils/upload/directoryTraversal'
 import UploadFileItem from '@/components/upload/UploadFileItem.vue'
+
+const COPY_FORMATS = [
+    { value: 'url', label: 'URL', initial: 'U', icon: 'link' },
+    { value: 'md', label: 'Markdown', initial: 'M', icon: 'code' },
+    { value: 'html', label: 'HTML', initial: 'H', icon: 'code-branch' },
+    { value: 'ubb', label: 'BBCode', initial: 'B', icon: 'quote-right' }
+]
 
 export default {
 name: 'UploadForm',
@@ -385,6 +414,12 @@ computed: {
     ]),
     unlocatedDoneCount() {
         return this.fileList.filter(item => (item.status === 'done' || item.status === 'success') && !item.hasGps && item.srcID).length
+    },
+    defaultCopyFormat() {
+        return COPY_FORMATS.find(format => format.value === this.selectedUrlForm) || COPY_FORMATS[0]
+    },
+    alternativeCopyFormats() {
+        return COPY_FORMATS.filter(format => format.value !== this.defaultCopyFormat.value)
     },
     uploadSuccessCount() {
         return this.fileList.filter(item => item.status === 'done' || item.status === 'success').length
@@ -1001,7 +1036,7 @@ methods: {
                 name: fileItem.name,
                 url: fileItem.finalURL,
                 time: Date.now(),
-                type: fileItem.name.split('.').pop().toLowerCase()
+                type: fileItem.type || resolveFileType(fileItem.name)
             }
             history.push(newRecord)
             localStorage.setItem('uploadHistory', JSON.stringify(history))
@@ -1032,8 +1067,13 @@ methods: {
         this.$message({ type: 'success', message: this.$t('uploadForm.copySuccess') })
     },
     beforeUpload(file) {
+        file = ensureFileType(file)
+        const originalSize = file.size
         return new Promise(async (resolve, reject) => {
             let processedFile = file
+            let processedFile = file
+            let convertedToWebp = false
+            const preserveAnimation = await isAnimatedImage(file)
             let gpsInfo = { hasGps: false }
             try {
                 if (file.type && file.type.includes('image')) {
@@ -1045,8 +1085,8 @@ methods: {
             
             // WebP 转换：在压缩之前进行
             // 条件：1.开启WebP转换 2.文件类型为图片 3.不是WebP/GIF/SVG格式
-            const canConvertToWebp = this.convertToWebp && 
-                file.type.includes('image') && 
+            const canConvertToWebp = !preserveAnimation && this.convertToWebp &&
+                getFileTypeCategory(file.type) === 'image' &&
                 !file.type.includes('webp') && 
                 !file.type.includes('gif') && 
                 !file.type.includes('svg')
@@ -1056,6 +1096,7 @@ methods: {
                     const convertedFile = await this.convertImageToWebp(file)
                     if (convertedFile) {
                         processedFile = convertedFile
+                        convertedToWebp = normalizeMimeType(convertedFile.type) === 'image/webp'
                         console.log(`WebP转换成功: ${file.name} -> ${convertedFile.name}, 大小: ${(file.size/1024).toFixed(1)}KB -> ${(convertedFile.size/1024).toFixed(1)}KB`)
                     }
                 } catch (err) {
@@ -1064,8 +1105,8 @@ methods: {
                 }
             }
             
-            // 客户端压缩条件：1.文件类型为图片 2.开启客户端压缩，且文件大小大于压缩阈值
-            const needCustomCompress = processedFile.type.includes('image') && this.customerCompress && processedFile.size / 1024 / 1024 > this.compressBar
+            // 动图保留原文件；静态图片超过阈值时按设置压缩。
+            const needCustomCompress = !preserveAnimation && getFileTypeCategory(processedFile.type) === 'image' && this.customerCompress && processedFile.size / 1024 / 1024 > this.compressBar
             const isLtLim = processedFile.size / 1024 / 1024 <= 1024 || this.uploadChannel !== 'telegram'
 
             const pushFileToQueue = (file, serverCompress) => {
@@ -1073,6 +1114,10 @@ methods: {
                 this.fileList.push({
                     uid: file.uid,
                     name: file.uploadRelativePath || file.name,
+                    type: file.type,
+                    size: file.size,
+                    originalSize,
+                    convertedToWebp: convertedToWebp && normalizeMimeType(file.type) === 'image/webp',
                     url: fileUrl,
                     finalURL: '',
                     mdURL: '',
@@ -1107,7 +1152,7 @@ methods: {
                     this.copyUploadPath(processedFile, newFile)
 
                     //开启服务端压缩条件：1.开启服务端压缩 2.文件大小小于10MB 3.上传渠道为Telegram
-                    const needServerCompress = this.serverCompress && newFile.size / 1024 / 1024 < 10 && this.uploadChannel === 'telegram'
+                    const needServerCompress = !preserveAnimation && this.serverCompress && newFile.size / 1024 / 1024 < 10 && this.uploadChannel === 'telegram'
 
                     pushFileToQueue(newFile, needServerCompress)
                 }).catch((err) => {
@@ -1118,7 +1163,7 @@ methods: {
                 this.uploading = true
                 
                 // 开启服务端压缩条件：1.上传渠道为Telegram 2.开启服务端压缩 3.如果为图片，则文件大小小于10MB，否则不限制大小
-                const needServerCompress = this.uploadChannel === 'telegram' && this.serverCompress && (processedFile.type.includes('image') ? processedFile.size / 1024 / 1024 < 10 : true)
+                const needServerCompress = !preserveAnimation && this.uploadChannel === 'telegram' && this.serverCompress && (getFileTypeCategory(processedFile.type) === 'image' ? processedFile.size / 1024 / 1024 < 10 : true)
                 pushFileToQueue(processedFile, needServerCompress)
             } else {
                 this.$message.error(this.$t('uploadForm.fileTooLarge', { name: processedFile.name }))
@@ -1132,10 +1177,10 @@ methods: {
             fileItem.progreess = event.percent
         }
     },
-    copyAll() {
+    copyAll(format = this.selectedUrlForm) {
         const urls = this.fileList
             .filter(item => item.status === 'done' || item.status === 'success')
-            .map(item => getUrlByFormat(item, this.selectedUrlForm))
+            .map(item => getUrlByFormat(item, format))
             .join('\n')
         navigator.clipboard.writeText(urls)
         this.$message({ type: 'success', message: this.$t('uploadForm.copyAllSuccess') })
@@ -1359,7 +1404,7 @@ methods: {
                                 if (fileName === '') {
                                     // 获取文件后缀
                                     const url = new URL(text);
-                                    let extension = url.pathname.split('.').pop();
+                                    let extension = getFileExtension(url.pathname);
                                     // 未能从URL提取有效后缀，使用bin作为默认后缀
                                     if (!extension || extension === '' || extension.length > 10) {
                                         extension = 'bin';
@@ -2562,7 +2607,7 @@ html.dark .el-upload__text :deep(em) {
 :deep(.el-upload-dragger::before) {
     content: '';
     position: absolute;
-    inset: 0;
+    inset: -200px;
     pointer-events: none;
     background-image:
         radial-gradient(2px 2px at 10% 10%, var(--upload-card-effect-color, #2563EB) 50%, transparent 0),
@@ -2576,6 +2621,7 @@ html.dark .el-upload__text :deep(em) {
         radial-gradient(2px 2px at 90% 10%, var(--upload-card-effect-color, #2563EB) 50%, transparent 0),
         radial-gradient(2px 2px at 15% 70%, var(--upload-card-effect-color, #2563EB) 50%, transparent 0);
     background-size: 200px 200px;
+    --star-travel: 200px;
     opacity: 0;
     z-index: 0;
     transition: opacity 0.6s ease;
@@ -2585,7 +2631,7 @@ html.dark .el-upload__text :deep(em) {
 :deep(.el-upload-dragger::after) {
     content: '';
     position: absolute;
-    inset: 0;
+    inset: -150px;
     pointer-events: none;
     background-image:
         radial-gradient(3px 3px at 15% 15%, var(--upload-card-effect-color, #2563EB) 50%, transparent 0),
@@ -2594,6 +2640,7 @@ html.dark .el-upload__text :deep(em) {
         radial-gradient(2.5px 2.5px at 35% 65%, var(--upload-card-effect-color, #2563EB) 50%, transparent 0),
         radial-gradient(2.5px 2.5px at 65% 35%, var(--upload-card-effect-color, #2563EB) 50%, transparent 0);
     background-size: 150px 150px;
+    --star-travel: 150px;
     opacity: 0;
     z-index: 0;
     transition: opacity 0.6s ease;
@@ -2601,22 +2648,30 @@ html.dark .el-upload__text :deep(em) {
 
 .upload-card:hover :deep(.el-upload-dragger::before) {
     opacity: 0.3;
-    animation: starScroll 60s linear infinite;
+    animation: starScroll 120s linear infinite;
 }
 
 .upload-card:hover :deep(.el-upload-dragger::after) {
     opacity: 0.6;
-    animation: starScroll 40s linear infinite, starPulse 4s ease-in-out infinite;
+    animation: starScroll 60s linear infinite, starPulse 4s ease-in-out infinite;
 }
 
 @keyframes starScroll {
-    from { background-position: 0 0; }
-    to { background-position: 100px 100px; }
+    /* 使用合成位移代替逐帧重绘背景，移动完整纹理周期以衔接循环。 */
+    from { transform: translate(0, 0); }
+    to { transform: translate(var(--star-travel), var(--star-travel)); }
 }
 
 @keyframes starPulse {
     0%, 100% { opacity: 0.6; }
     50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .upload-card:hover :deep(.el-upload-dragger::before),
+    .upload-card:hover :deep(.el-upload-dragger::after) {
+        animation: none;
+    }
 }
 
 /* ============================================
@@ -2691,6 +2746,16 @@ html.dark .el-upload__text :deep(em) {
 
 .modern-action-btn-copy {
     color: var(--upload-action-copy-color);
+}
+
+.copy-format-badge {
+    position: absolute;
+    right: 3px;
+    bottom: 2px;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 10px;
+    pointer-events: none;
 }
 
 .modern-action-btn-retry {
@@ -2768,6 +2833,12 @@ html.dark .el-upload__text :deep(em) {
 }
 
 /* Dropdown Menu Styles */
+.copy-format-icon {
+    width: 16px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
 .modern-dropdown-item-content {
     display: flex;
     align-items: center;

@@ -1,7 +1,7 @@
 <template>
   <div class="public-browse">
     <!-- 顶部导航栏 -->
-    <header class="header">
+    <header class="header" data-entry="down">
       <div class="header-left">
         <a class="logo" href="https://github.com/MarSeventh/CloudFlare-ImgBed" target="_blank" rel="noopener">{{ siteName }}</a>
       </div>
@@ -45,13 +45,13 @@
     </header>
 
     <!-- 加载状态 -->
-    <div v-if="loading && files.length === 0" class="loading-container">
+    <div v-if="loading && files.length === 0" class="loading-container" data-entry="up">
       <div class="loading-spinner"></div>
       <p>{{ $t('publicBrowse.loading') }}</p>
     </div>
 
     <!-- 错误提示 -->
-    <div v-else-if="error" class="error-container">
+    <div v-else-if="error" class="error-container" data-entry="up">
       <p>{{ error }}</p>
       <button v-if="canRetry" @click="loadFiles" class="retry-btn">{{ $t('publicBrowse.retry') }}</button>
       <div class="error-credit">
@@ -70,7 +70,7 @@
     </div>
 
     <!-- 瀑布流容器 -->
-    <div v-else class="gallery-container" ref="galleryContainer">
+    <div v-else class="gallery-container" data-entry="up" ref="galleryContainer">
       <!-- 文件夹区域 -->
       <div v-if="folders.length > 0" class="folders-section">
         <div class="folders-grid">
@@ -314,6 +314,7 @@ import { mapGetters } from 'vuex';
 import TransformMedia from '@/components/browse/TransformMedia.vue';
 import ToggleDark from '@/components/ToggleDark.vue';
 import { hardStopAll, installGlobalMediaGuards } from '@/utils/mediaManager';
+import { isImageFile, isVideoFile, isAudioFile } from '@/utils/mimeTypes';
 
 export default {
   name: 'PublicBrowse',
@@ -806,21 +807,9 @@ export default {
       return `${window.location.origin}/file/${encodeURI(name)}`;
     },
 
-    isImage(file) {
-      const ext = file.name.split('.').pop().toLowerCase();
-      return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext);
-    },
-
-    isVideo(file) {
-      const ext = file.name.split('.').pop().toLowerCase();
-      // 浏览器原生支持的视频格式 + 部分浏览器支持的格式
-      return ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'mkv', 'avi', '3gp', 'mpeg', 'mpg'].includes(ext);
-    },
-
-    isAudio(file) {
-      const ext = file.name.split('.').pop().toLowerCase();
-      return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'ape', 'opus'].includes(ext);
-    },
+    isImage: isImageFile,
+    isVideo: isVideoFile,
+    isAudio: isAudioFile,
 
     getFileName(name) {
       return name.split('/').pop();

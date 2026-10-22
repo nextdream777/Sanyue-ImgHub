@@ -2,9 +2,11 @@
     <a 
         :href="logoHref" 
         :target="target"
-        :class="logo-link"
+        class="logo-link"
+        rel="noopener noreferrer"
     >
     <img 
+        data-entry="left"
         :class="logoClasses"
         :alt="alt" 
         :src="logoUrl"
@@ -166,7 +168,7 @@ export default {
 }
 
 /* 辅助功能支持 */
-.logo:focus {
+.logo-link:focus-visible {
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
 }
@@ -178,7 +180,7 @@ export default {
 }
 
 /* 暗色模式下的 Logo 样式 */
-:global(html.dark) .logo {
+html.dark .logo {
   --logo-brightness: 0.9;
   --logo-hover-brightness: 1;
   filter: var(--logo-dark-filter, brightness(var(--logo-brightness)) drop-shadow(0 0 0 var(--logo-glow-color)));

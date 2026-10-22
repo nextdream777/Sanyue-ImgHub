@@ -1,16 +1,7 @@
 <template>
     <div class="container">
-        <el-header>
-            <div class="header-content admin-header-content">
-                <DashboardTabs activeTab="customerConfig"></DashboardTabs>
-                <div class="header-action">
-                    <el-tooltip :disabled="disableTooltip" :content="$t('sysConfig.logout')" placement="bottom">
-                        <font-awesome-icon icon="sign-out-alt" class="header-icon" @click="handleLogout"></font-awesome-icon>
-                    </el-tooltip>
-                </div>
-            </div>
-        </el-header>
-        <div class="main-container">
+        <AdminHeader active-tab="customerConfig" />
+        <div class="main-container" data-entry="up">
             <el-table :data="paginatedData" :default-sort="{ prop: 'count', order: 'descending' }" row-key="ip" class="main-table" table-layout="fixed" v-loading="loading" @expand-change="handleExpandChange">
                 <el-table-column type="expand" width="48">
                     <template v-slot="props">
@@ -20,8 +11,8 @@
                                 <el-table-column prop="metadata.FileName" :label="$t('customerConfig.fileNameCol')"></el-table-column>
                                 <el-table-column :label="$t('customerConfig.filePreview')">
                                     <template v-slot="{ row }">
-                                        <el-image v-if="row.metadata?.FileType?.includes('image')" :src="'/file/' + row.id + '?from=admin'" fit="cover" lazy style="width: 100px; height: 100px;"></el-image>
-                                        <video v-else-if="row.metadata?.FileType?.includes('video')" :src="'/file/' + row.id + '?from=admin'" controls style="width: 100px; height: 100px;"></video>
+                                        <el-image v-if="isImageFile(row)" :src="'/file/' + row.id + '?from=admin'" fit="cover" lazy style="width: 100px; height: 100px;"></el-image>
+                                        <video v-else-if="isVideoFile(row)" :src="'/file/' + row.id + '?from=admin'" controls style="width: 100px; height: 100px;"></video>
                                         <div v-else style="width: 100px; height: 100px; display: flex; justify-content: center; align-items: center;">
                                             <font-awesome-icon icon="file" style="font-size: 2em;"></font-awesome-icon>
                                         </div>
@@ -79,8 +70,9 @@
 
 <script>
 import fetchWithAuth from '@/utils/fetchWithAuth';
-import DashboardTabs from '@/components/DashboardTabs.vue';
+import AdminHeader from '@/components/dashboard/AdminHeader.vue';
 import backgroundManager from '@/mixins/backgroundManager';
+import { isImageFile, isVideoFile } from '@/utils/mimeTypes';
 
 export default {
     name: 'CustomerConfig',
@@ -100,14 +92,11 @@ export default {
         }
     },
     components: {
-        DashboardTabs
+        AdminHeader
     },
     computed: {
         isMobile() {
             return this.viewportWidth < 768;
-        },
-        disableTooltip() {
-            return this.isMobile;
         },
         pagerCount() {
             return this.isMobile ? 3 : 7;
@@ -126,18 +115,8 @@ export default {
         }
     },
     methods: {
-        handleLogout() {
-            const url = process.env.NODE_ENV === 'production' ? '/api/auth/logout' : '/api/api/auth/logout';
-            fetch(url, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ authType: 'admin' })
-            }).finally(() => {
-                this.$store.commit('setAdminLoggedIn', false);
-                this.$router.push('/adminLogin');
-            });
-        },
+        isImageFile,
+        isVideoFile,
         formatTimeStamp(timeStamp) {
             return new Date(timeStamp).toLocaleString();
         },
@@ -332,7 +311,7 @@ export default {
 
 @media (max-width: 768px) {
     .main-container {
-        margin-top: 60px;
+        margin-top: 12px;
     }
 
     .allow-upload-switch :deep(.el-switch__label) {

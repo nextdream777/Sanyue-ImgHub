@@ -21,7 +21,11 @@
 
       <div class="status-hero-time-card">
         <span class="status-hero-time-caption">{{ $t('sysStatus.localTime') }}</span>
-        <time class="status-hero-time" :datetime="currentTime.toISOString()">{{ currentTimeLabel }}</time>
+        <time
+          class="status-hero-time"
+          :class="{ 'is-visible': clockVisible, 'is-font-ready': clockFontReady }"
+          :datetime="currentTime.toISOString()"
+        >{{ currentTimeLabel }}</time>
         <span class="status-hero-timezone">{{ timeZoneLabel }}</span>
       </div>
     </section>
@@ -415,6 +419,7 @@ import IndexRebuilder from '@/utils/indexRebuilder'
 import BackupGenerator from '@/utils/backupGenerator'
 import RestoreProcessor from '@/utils/restoreProcessor'
 import DateRangeCalendar from '@/components/DateRangeCalendar.vue'
+import { isImageFile, isVideoFile } from '@/utils/mimeTypes'
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler)
 
@@ -453,6 +458,9 @@ export default {
       indexInfoError: false,
       currentTime: new Date(),
       clockTimer: null,
+      clockVisible: false,
+      clockFontReady: false,
+      cancelClockFontWait: null,
       version: packageInfo.version, // 从package.json获取版本号
       loadErrors: {
         newest: false,
@@ -809,17 +817,43 @@ export default {
   },
   mounted() {
     this.fetchIndexInfo()
+    this.prepareClockFont()
     this.clockTimer = window.setInterval(() => {
       this.currentTime = new Date()
     }, 1000)
   },
   beforeUnmount() {
+    this.cancelClockFontWait?.()
     if (this.clockTimer) {
       window.clearInterval(this.clockTimer)
       this.clockTimer = null
     }
   },
   methods: {
+    prepareClockFont() {
+      if (!document.fonts?.load) {
+        this.clockVisible = true
+        return
+      }
+
+      let settled = false
+      // 字体等待独立于状态请求与入场；超时或失败时使用 Arial。
+      const timeout = window.setTimeout(() => reveal(false), 5000)
+      const reveal = ready => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timeout)
+        this.clockFontReady = ready
+        this.clockVisible = true
+      }
+      this.cancelClockFontWait = () => {
+        settled = true
+        window.clearTimeout(timeout)
+      }
+      document.fonts.load('400 36px "UnidreamLED"', '0123456789:')
+        .then(fonts => reveal(fonts.length > 0))
+        .catch(() => reveal(false))
+    },
     // 获取渠道图表颜色
     getChartColor(index) {
       return this.channelColors[index % this.channelColors.length]
@@ -1184,8 +1218,7 @@ export default {
     // 检查是否应该显示预览图
     isValidPreview(type, file) {
       if (this.loadErrors[type]) return false
-      if (!file?.metadata?.FileType) return false
-      return file.metadata.FileType.includes('image') || file.metadata.FileType.includes('video')
+      return isImageFile(file) || isVideoFile(file)
     },
     
     // 打开发布页面
@@ -1193,29 +1226,8 @@ export default {
       window.open('https://github.com/MarSeventh/CloudFlare-ImgBed/releases', '_blank')
     },
     
-    // 判断是否为图片文件
-    isImageFile(file) {
-      if (!file) return false
-      // 优先通过 FileType 判断
-      if (file.metadata?.FileType?.includes('image')) return true
-      // 通过文件名后缀判断
-      const fileName = file.metadata?.FileName || file.id || ''
-      const extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
-      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'avif', 'heic', 'heif']
-      return imageExtensions.includes(extension)
-    },
-    
-    // 判断是否为视频文件
-    isVideoFile(file) {
-      if (!file) return false
-      // 优先通过 FileType 判断
-      if (file.metadata?.FileType?.includes('video')) return true
-      // 通过文件名后缀判断
-      const fileName = file.metadata?.FileName || file.id || ''
-      const extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
-      const videoExtensions = ['mp4', 'webm', 'ogg', 'avi', 'mov', 'flv', 'wmv', 'mkv', 'm4v', '3gp', 'mpeg', 'mpg']
-      return videoExtensions.includes(extension)
-    },
+    isImageFile,
+    isVideoFile,
     
     // 在新窗口打开文件
     openFileInNewTab(file) {
@@ -1329,8 +1341,17 @@ export default {
 </script>
 
 <style scoped>
+/* 时钟字体仅在系统状态页按需加载。 */
+@font-face {
+  font-family: 'UnidreamLED';
+  src: url('@/assets/fonts/UnidreamLED.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 .status-panel {
-  padding: 20px;
+  --status-section-gap: 30px;
   background: transparent;
   min-height: 100vh;
 }
@@ -1345,7 +1366,7 @@ export default {
   align-items: center;
   gap: 42px;
   margin-bottom: 8px;
-  padding: 28px 12px 34px;
+  padding: 0 12px 34px;
   color: var(--admin-container-color);
 }
 
@@ -1485,11 +1506,29 @@ export default {
   margin-top: 7px;
   color: var(--admin-container-color);
   font-size: clamp(28px, 3vw, 36px);
-  font-weight: 750;
+  font-family: Arial, sans-serif;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  letter-spacing: -0.04em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
+  min-height: 1em;
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.status-hero-time.is-visible {
+  opacity: 1;
+}
+
+.status-hero-time.is-font-ready {
+  font-family: 'UnidreamLED', Arial, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-hero-time {
+    transition: none;
+  }
 }
 
 .status-hero-timezone {
@@ -1525,7 +1564,7 @@ export default {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
-  margin-bottom: 30px;
+  margin-bottom: var(--status-section-gap);
 }
 
 .overview-card {
@@ -1602,14 +1641,9 @@ export default {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
-  margin-bottom: 30px;
+  row-gap: var(--status-section-gap);
+  margin-bottom: var(--status-section-gap);
   overflow: visible;
-}
-
-@media (max-width: 768px) {
-  .charts-section {
-    grid-template-columns: 1fr;
-  }
 }
 
 .chart-card {
@@ -1685,14 +1719,16 @@ export default {
   box-shadow: none;
 }
 
+html.dark .trend-calendar-btn:hover {
+  color: var(--primary-color-accent);
+}
+
 .trend-date-dialog {
-  overflow: visible;
   max-width: calc(100vw - 32px);
   box-sizing: border-box;
 }
 
 .trend-date-dialog :deep(.el-dialog__body) {
-  overflow: visible;
   padding: 16px 24px 24px;
 }
 
@@ -1934,10 +1970,6 @@ html.dark .legend-item:hover {
 }
 
 /* 操作区域 */
-.actions-section {
-  margin-bottom: 30px;
-}
-
 .action-card {
   background: var(--glass-bg);
   border-radius: 16px;
@@ -2107,6 +2139,7 @@ html.dark .legend-item:hover {
 
 /* 文件信息区域 */
 .file-info-section {
+  margin-top: var(--status-section-gap);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 20px;
@@ -2244,14 +2277,10 @@ html.dark .legend-item:hover {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .status-panel {
-    padding: 15px;
-  }
-
   .status-hero {
     grid-template-columns: 1fr;
     gap: 18px;
-    padding: 24px 8px 30px;
+    padding: 0 8px 30px;
   }
 
   .status-hero-time-card {
@@ -2273,7 +2302,6 @@ html.dark .legend-item:hover {
   
   .charts-section {
     grid-template-columns: 1fr;
-    gap: 15px;
   }
 
   .trend-chart-header {
@@ -2340,7 +2368,7 @@ html.dark .legend-item:hover {
 
 @media (max-width: 480px) {
   .status-hero {
-    padding: 21px 4px 28px;
+    padding: 0 4px 28px;
   }
 
   .status-hero-title {

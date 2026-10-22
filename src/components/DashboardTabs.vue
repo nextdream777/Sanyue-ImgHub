@@ -3,6 +3,7 @@
         <div
             class="page-switcher"
             :class="{ 'is-open': isPageMenuOpen }"
+            :style="{ '--page-menu-count': inactivePageOptions.length }"
             role="navigation"
             @click.stop
             @pointerdown.stop
@@ -52,15 +53,10 @@
                 </div>
             </div>
         </div>
-        <AdminToggleDark/>
-        <LanguageSwitcher class="tabs-language-switcher"/>
     </div>
 </template>
 
 <script>
-import AdminToggleDark from './dashboard/AdminToggleDark.vue';
-import LanguageSwitcher from '@/components/LanguageSwitcher.vue';
-
 export default {
     name: 'DashboardTabs',
     props: {
@@ -68,10 +64,6 @@ export default {
             type: String,
             default: 'dashboard'
         }
-    },
-    components: {
-        AdminToggleDark,
-        LanguageSwitcher
     },
     data() {
         return {
@@ -105,17 +97,6 @@ export default {
             }
             this.closePageMenu();
         },
-        refreshDashboard() {
-            location.reload();
-        },
-        handleTabClick(tab) {
-            this.closePageMenu();
-            if (tab === this.activeTab) {
-                this.refreshDashboard();
-                return;
-            }
-            this.$router.push(`/${tab}`);
-        },
         isTouchViewport() {
             return window.matchMedia('(hover: none), (pointer: coarse)').matches;
         },
@@ -132,7 +113,8 @@ export default {
                 }
                 return;
             }
-            this.handleTabClick(tab);
+            this.closePageMenu();
+            this.$router.push(`/${tab}`);
         },
         handlePageSwitcherEnter() {
             if (!this.isTouchViewport()) {
@@ -173,16 +155,21 @@ export default {
 
 <style scoped>
 .tabs {
+    --page-option-height: 37px;
+    --page-option-font-size: 15px;
+    --page-current-height: 37px;
+    --page-current-font-size: 1.1em;
+    --page-sheet-padding: 4px;
+    --page-menu-top: calc(var(--page-current-height) + var(--page-sheet-padding) * 2);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
 }
 
 .page-switcher {
     position: relative;
-    display: grid;
-    align-items: start;
+    display: flex;
+    align-items: center;
     height: 44px;
     overflow: visible;
 }
@@ -198,13 +185,12 @@ export default {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    padding: 4px;
+    padding: var(--page-sheet-padding);
     border: 1px solid transparent;
     border-radius: 14px;
     box-sizing: border-box;
     background-color: transparent;
     overflow: visible;
-    transition: none;
 }
 
 .page-switcher-sheet::before {
@@ -214,7 +200,7 @@ export default {
     left: 0;
     right: 0;
     z-index: 0;
-    height: calc(45px + var(--inactive-options-count, 5) * 37px + 8px);
+    height: calc(var(--page-menu-top) + var(--page-menu-count) * var(--page-option-height) + var(--page-sheet-padding));
     border: 1px solid var(--tabs-switcher-border-color);
     border-radius: 14px;
     background: var(--tabs-dropdown-popper-bg-color);
@@ -258,25 +244,24 @@ export default {
     gap: 7px;
     width: 100%;
     min-width: 148px;
-    height: 37px;
+    height: var(--page-option-height);
     padding: 0 12px;
     border: none;
     border-radius: 10px;
     color: var(--admin-container-color);
     background: transparent;
-    font-size: 15px;
+    font-size: var(--page-option-font-size);
     font-weight: 600;
     font-family: inherit;
     white-space: nowrap;
     cursor: pointer;
-    transition: none;
 }
 
 .page-option-list {
     position: absolute;
-    top: 45px;
-    left: 5px;
-    right: 5px;
+    top: var(--page-menu-top);
+    left: calc(var(--page-sheet-padding) + 1px);
+    right: calc(var(--page-sheet-padding) + 1px);
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -299,12 +284,12 @@ export default {
     left: 0;
     right: 0;
     z-index: 0;
-    height: 37px;
+    height: var(--page-option-height);
     border-radius: 10px;
     background: var(--tabs-switcher-hover-bg);
     opacity: 0;
     pointer-events: none;
-    transform: translateY(calc(var(--hovered-option-index) * 37px));
+    transform: translateY(calc(var(--hovered-option-index) * var(--page-option-height)));
     transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -319,14 +304,14 @@ export default {
 }
 
 .page-option.is-current {
-    height: 37px;
+    height: var(--page-current-height);
     gap: 8px;
     padding: 0 14px;
     color: var(--tabs-switcher-current-color);
     background: var(--tabs-switcher-current-bg);
     border: 1px solid var(--tabs-switcher-current-border-color);
     box-shadow: none;
-    font-size: 1.1em;
+    font-size: var(--page-current-font-size);
     font-weight: bold;
     line-height: 1.15;
 }
@@ -360,11 +345,14 @@ export default {
 /* 移动端适配 */
 @media (max-width: 768px) {
     .tabs {
-        gap: 6px;
+        --page-option-height: 32px;
+        --page-option-font-size: 12px;
+        --page-current-height: 32px;
+        --page-current-font-size: 14px;
     }
 
     .page-switcher-title {
-        max-width: 6em;
+        max-width: 4.8em;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -376,16 +364,13 @@ export default {
     }
 
     .page-switcher-sheet::before {
-        height: calc(40px + var(--inactive-options-count, 5) * 32px + 8px);
         transform: translateY(-3px) scaleY(0.72);
     }
 
     .page-option {
         justify-content: flex-start;
         min-width: 0;
-        height: 32px;
         padding: 0 10px;
-        font-size: 12px;
         gap: 6px;
     }
 
@@ -394,20 +379,12 @@ export default {
     }
 
     .page-option-list {
-        top: 40px;
         transform: translateY(-8px) scaleY(0.86);
     }
 
-    .page-option-highlight {
-        height: 32px;
-        transform: translateY(calc(var(--hovered-option-index) * 32px));
-    }
-
     .page-option.is-current {
-        height: 32px;
         gap: 5px;
         padding: 0 10px;
-        font-size: 1em;
     }
 
     .page-option.is-current > .page-option-icon {
@@ -417,27 +394,19 @@ export default {
     .page-option.is-current > .page-switcher-arrow {
         margin-left: 4px;
     }
+}
 
-    .tabs-language-switcher {
-        --lang-icon-size: 1.1em;
-        padding: 3px;
+@media (max-width: 360px) {
+    .page-switcher-title {
+        max-width: 4em;
     }
 }
 
-.tabs-language-switcher {
-    --lang-icon-size: 1.3em;
-    --lang-icon-color: var(--admin-theme-toggle-color);
-    transition: color 0.3s ease;
-    padding: 5px;
-}
-
-/* 导航栏内主题/语言切换按钮:移除有色背景与毛玻璃,仅保留图标 */
-.tabs :deep(#themeToggle),
-.tabs :deep(#themeToggle:hover),
-.tabs :deep(.language-switcher),
-.tabs :deep(.language-switcher:hover) {
-    background-color: transparent !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+@media (prefers-reduced-motion: reduce) {
+    .page-switcher-sheet::before,
+    .page-option-list,
+    .page-option-highlight {
+        transition: none;
+    }
 }
 </style>

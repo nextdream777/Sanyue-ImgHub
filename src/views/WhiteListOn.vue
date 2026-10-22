@@ -5,7 +5,7 @@
     
     <div class="whitelist-content">
       <!-- 返回首页按钮 -->
-      <div class="back-button-wrapper">
+      <div class="back-button-wrapper" data-entry="left">
         <el-button 
           class="back-button" 
           @click="goHome"
@@ -17,7 +17,7 @@
       </div>
 
       <!-- 白名单图标和动画 -->
-      <div class="status-animation">
+      <div class="status-animation" data-entry="down">
         <div class="status-icon">
           <font-awesome-icon icon="shield-alt" class="shield-icon" />
           <div class="status-badge">
@@ -27,7 +27,7 @@
       </div>
       
       <!-- 提示信息 -->
-      <div class="status-info">
+      <div class="status-info" data-entry="up">
         <h1 class="status-title">{{ $t('whitelist.title') }}</h1>
         <p class="status-description">
           {{ $t('whitelist.description') }}
@@ -237,11 +237,7 @@ export default {
   animation: tick 1s ease-in-out infinite;
 }
 
-/* 状态信息 */
-.status-info {
-  animation: fadeInUp 1s ease-out 0.5s both;
-}
-
+/* 状态信息的入场位移与渐显由入口控制器统一处理。 */
 .status-title {
   font-size: 2rem;
   font-weight: 700;
@@ -306,7 +302,6 @@ export default {
 
 /* 帮助信息 */
 .help-info {
-  animation: fadeInUp 1s ease-out 1s both;
   margin-bottom: 1.5rem;
 }
 
@@ -347,7 +342,6 @@ export default {
 
 /* 项目信息 */
 .powered-by {
-  animation: fadeInUp 1s ease-out 1.2s both;
   padding-top: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.2);
   opacity: 0.8;
@@ -461,17 +455,6 @@ export default {
   50% {
     transform: translateY(-25px) rotate(180deg);
     opacity: 0.3;
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 
