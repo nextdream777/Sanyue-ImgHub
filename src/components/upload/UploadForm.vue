@@ -1071,7 +1071,6 @@ methods: {
         const originalSize = file.size
         return new Promise(async (resolve, reject) => {
             let processedFile = file
-            let processedFile = file
             let convertedToWebp = false
             const preserveAnimation = await isAnimatedImage(file)
             let gpsInfo = { hasGps: false }
