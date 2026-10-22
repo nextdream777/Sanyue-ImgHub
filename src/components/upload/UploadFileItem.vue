@@ -57,7 +57,6 @@
                     </span>
                 </div>
             </div>
-            </div>
             <div class="upload-list-item-url" v-if="file.status==='done'">
                 <div class="upload-list-item-url-row">
                     <el-input v-model="file.finalURL" readonly @click="selectAllText" :size="urlSize">
