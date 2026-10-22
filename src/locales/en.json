@@ -178,7 +178,9 @@
     "tags": "Tags",
     "channelType": "Channel Type",
     "channelNameCol": "Channel Name",
-    "uploadAddress": "Upload Address",
+    "uploadAddress": "Upload IP",
+    "locationCol": "Location",
+    "hasLocation": "With GPS",
     "fileSize": "Size",
     "uploadTime": "Upload Time",
     "actions": "Actions",
@@ -238,6 +240,14 @@
     "copiedFileLinks": "Copied {count} file links",
     "copyFolderLinksFailed": "Failed to copy folder links, please retry"
   },
+  "dashboardTabs": {
+    "fileManagement": "File Management",
+    "photoAtlas": "Photo Atlas",
+    "atlasManagement": "Atlas Management",
+    "userManagement": "User Management",
+    "systemSettings": "System Settings",
+    "fileUpload": "File Upload"
+  },
   "fileDetail": {
     "title": "File Details",
     "download": "Download",
@@ -262,6 +272,16 @@
     "accessStatusAndReview": "Access Status/Review",
     "uploadIP": "Upload IP",
     "uploadAddressLabel": "Upload Address",
+    "locationCoordinates": "Coordinates",
+    "locationAddress": "Location",
+    "camera": "Camera",
+    "lens": "Lens Model",
+    "exposureParams": "Shooting Settings",
+    "altitude": "Altitude",
+    "shootingTime": "Shooting Time",
+    "viewInAtlas": "View in Photo Atlas",
+    "noLocation": "No coordinates recorded",
+    "editLocation": "Edit Location",
     "fileTags": "File Tags",
     "noTags": "No tags",
     "unknown": "Unknown",
@@ -282,7 +302,14 @@
     "renameConfirm": "Confirm Rename",
     "renameSuccess": "File renamed successfully",
     "renameConflict": "Target file name already exists",
-    "renameFailed": "Rename failed"
+    "renameFailed": "Rename failed",
+    "more": "More",
+    "openOriginal": "Open in New Tab",
+    "shareLinks": "Share Links & Embed",
+    "photoSpecs": "Camera & Exposure Specs",
+    "storageAndAudit": "Storage & Security",
+    "manageTags": "Manage Tags",
+    "locationPlaceholder": "e.g. West Lake, Hangzhou"
   },
   "filter": {
     "accessStatus": "Access Status",
@@ -303,6 +330,9 @@
     "channelType": "Channel Type",
     "externalLink": "External Link",
     "channelName": "Channel Name",
+    "locationStatus": "Location Status",
+    "hasLocation": "With GPS",
+    "noLocation": "No GPS",
     "clearFilters": "Clear Filters"
   },
   "moveFile": {

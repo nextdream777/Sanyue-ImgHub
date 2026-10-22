@@ -48,7 +48,7 @@
                             {{ compressionLabel }}
                         </span>
                     </span>
-                    <span v-if="file.hasGps" class="geo-badge geo-badge-located" :title="file.geoText || '已含地理坐标'">
+                    <span v-if="file.hasGps" class="geo-badge geo-badge-located" :title="geoBadgeTitle">
                         <font-awesome-icon icon="map-marker-alt" class="geo-badge-icon" />
                         <span>{{ file.geoText || '已定位' }}</span>
                     </span>
@@ -102,6 +102,18 @@ export default {
     },
     emits: ['copy', 'remove', 'preview-error'],
     computed: {
+        geoBadgeTitle() {
+            const parts = []
+            if (this.file.locationName) parts.push(this.file.locationName)
+            if (this.file.geoText && this.file.geoText !== this.file.locationName) parts.push(this.file.geoText)
+            if (this.file.altitudeText) parts.push(this.file.altitudeText)
+            if (this.file.camera) parts.push(this.file.camera)
+            if (this.file.lensModel) parts.push(this.file.lensModel)
+            const exposure = [this.file.fNumber, this.file.exposureTime, this.file.iso, this.file.focalLength].filter(Boolean).join(' ')
+            if (exposure) parts.push(exposure)
+            if (this.file.dateTime) parts.push(this.file.dateTime)
+            return parts.length ? parts.join(' | ') : (this.file.geoText || '已含地理坐标')
+        },
         mimeType() {
             return normalizeMimeType(getFileMimeType(this.file))
         },

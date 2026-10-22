@@ -204,6 +204,14 @@ class FileManager {
         if (filters.channelName && filters.channelName.length > 0) {
             params += `&channelName=${encodeURIComponent(filters.channelName.join(','))}`;
         }
+        if (Array.isArray(filters.locationStatus)) {
+            // 选1个表示按对应状态过滤；两个都选或都不选均表示不过滤（全量）
+            if (filters.locationStatus.length === 1) {
+                params += `&locationStatus=${encodeURIComponent(filters.locationStatus[0])}`;
+            }
+        } else if (filters.locationStatus && filters.locationStatus !== 'all') {
+            params += `&locationStatus=${encodeURIComponent(filters.locationStatus)}`;
+        }
         return params;
     }
 

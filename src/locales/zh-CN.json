@@ -44,8 +44,7 @@
     "clearList": "清空列表",
     "clearAll": "清空全部",
     "clearUploaded": "清空已上传"
-  }
-,
+  },
   "uploadForm": {
     "fileInformation": "文件名与文件信息，可横向滚动查看",
     "fileSizeLabel": "文件大小：{size}",
@@ -128,8 +127,7 @@
     "recordsCleared": "记录已清空",
     "deleteConfirmMessage": "确定要删除这条记录吗？",
     "recordDeleted": "记录已删除"
-  }
-,
+  },
   "settings": {
     "linkFormatTitle": "链接格式设置",
     "defaultCopyLink": "默认复制链接",
@@ -180,7 +178,9 @@
     "tags": "标签",
     "channelType": "渠道类型",
     "channelNameCol": "渠道名称",
-    "uploadAddress": "上传地址",
+    "uploadAddress": "上传IP",
+    "locationCol": "拍摄地点",
+    "hasLocation": "含坐标",
     "fileSize": "大小",
     "uploadTime": "上传时间",
     "actions": "操作",
@@ -240,6 +240,14 @@
     "copiedFileLinks": "已复制 {count} 个文件链接",
     "copyFolderLinksFailed": "复制文件夹链接失败，请重试"
   },
+  "dashboardTabs": {
+    "fileManagement": "文件管理",
+    "photoAtlas": "光影图志",
+    "atlasManagement": "图志管理",
+    "userManagement": "用户管理",
+    "systemSettings": "系统设置",
+    "fileUpload": "文件上传"
+  },
   "fileDetail": {
     "title": "文件详情",
     "download": "下载",
@@ -264,6 +272,16 @@
     "accessStatusAndReview": "访问状态/审查",
     "uploadIP": "上传IP",
     "uploadAddressLabel": "上传地址",
+    "locationCoordinates": "地理坐标",
+    "locationAddress": "拍摄地点",
+    "camera": "拍摄设备",
+    "lens": "镜头型号",
+    "exposureParams": "拍摄参数",
+    "altitude": "海拔高度",
+    "shootingTime": "拍摄时间",
+    "viewInAtlas": "在光影图志中查看",
+    "noLocation": "未记录地理坐标",
+    "editLocation": "编辑位置",
     "fileTags": "文件标签",
     "noTags": "暂无标签",
     "unknown": "未知",
@@ -284,7 +302,14 @@
     "renameConfirm": "确认重命名",
     "renameSuccess": "文件重命名成功",
     "renameConflict": "目标文件名已存在",
-    "renameFailed": "重命名失败"
+    "renameFailed": "重命名失败",
+    "more": "更多",
+    "openOriginal": "新窗口查看",
+    "shareLinks": "外链与嵌入代码",
+    "photoSpecs": "摄影硬件与曝光规格",
+    "storageAndAudit": "存储与安全归属",
+    "manageTags": "管理标签",
+    "locationPlaceholder": "如: 浙江省·杭州市·西湖区"
   },
   "filter": {
     "accessStatus": "访问状态",
@@ -305,9 +330,11 @@
     "channelType": "渠道类型",
     "externalLink": "外链",
     "channelName": "渠道名称",
+    "locationStatus": "地理状态",
+    "hasLocation": "含坐标",
+    "noLocation": "无坐标",
     "clearFilters": "清除筛选"
-  }
-,
+  },
   "moveFile": {
     "title": "移动文件",
     "batchTitle": "批量移动文件",
@@ -373,8 +400,7 @@
     "removeFailed": "删除标签失败",
     "loadFailed": "加载标签失败",
     "indexPending": "标签已保存，索引同步失败。"
-  }
-,
+  },
   "mobileAction": {
     "viewDetail": "查看详情",
     "copyLink": "复制链接",
@@ -501,8 +527,7 @@
     "minutesAgo": "{count}分钟前",
     "justNow": "刚刚",
     "cancellingRebuild": "正在取消索引重建..."
-  }
-,
+  },
   "sysUpload": {
     "title": "上传渠道管理",
     "titleTooltip": "管理所有上传渠道的配置，点击卡片查看详情或编辑",
@@ -716,8 +741,7 @@
     "adminSessionMaxAge": "管理端会话有效期",
     "sessionMaxAgeUnit": "天",
     "sessionMaxAgeInvalid": "会话有效期必须为 1-3650 的正整数"
-  }
-,
+  },
   "sysPage": {
     "settingsSaved": "设置已保存",
     "refreshAnnouncement": "刷新公告已读状态",
@@ -793,8 +817,7 @@
     "sequentialPlay": "顺序播放",
     "loopSingle": "单曲循环",
     "more": "更多"
-  }
-,
+  },
   "directoryTree": {
     "selectDirectory": "选择目录",
     "retry": "重试",

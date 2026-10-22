@@ -57,6 +57,22 @@
             <div v-if="!isFolder && item.metadata?.ChannelName" class="channel-name-box">{{ item.metadata.ChannelName }}</div>
             <span v-else class="list-empty">-</span>
         </div>
+        <!-- 拍摄地点 -->
+        <div class="list-col list-col-location">
+            <div 
+                v-if="!isFolder && hasLocation" 
+                class="location-box" 
+                :title="locationTooltip"
+                @click.stop="handleLocationClick"
+            >
+                <svg class="location-pin-svg" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                    <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                <span class="location-name-text">{{ locationDisplayText }}</span>
+            </div>
+            <span v-else class="list-empty">-</span>
+        </div>
         <!-- 上传地址 -->
         <div class="list-col list-col-address">
             <div v-if="!isFolder && item.metadata?.UploadIP" class="address-box">{{ item.metadata.UploadIP }}</div>
@@ -112,6 +128,7 @@
 
 <script>
 import { isImageFile, isVideoFile } from '@/utils/mimeTypes';
+import { formatLocationAddress } from '@/utils/reverseGeocode';
 
 export default {
     name: 'FileListItem',
@@ -120,7 +137,7 @@ export default {
         selected: { type: Boolean, default: false },
         fileLink: { type: String, default: '' }
     },
-    emits: ['update:selected', 'enter', 'detail', 'copy', 'folderCopy', 'move', 'delete', 'download', 'touchstart', 'touchend', 'touchmove'],
+    emits: ['update:selected', 'enter', 'detail', 'copy', 'folderCopy', 'move', 'delete', 'download', 'touchstart', 'touchend', 'touchmove', 'locationClick'],
     data() {
         return {
             localSelected: this.selected,
@@ -179,6 +196,40 @@ export default {
                 return `${sizeMB} MB`;
             }
             return '-';
+        },
+        hasLocation() {
+            const lat = this.item?.metadata?.Latitude ?? this.item?.metadata?.latitude;
+            const lng = this.item?.metadata?.Longitude ?? this.item?.metadata?.longitude;
+            return lat !== undefined && lat !== null && lat !== '' &&
+                   lng !== undefined && lng !== null && lng !== '';
+        },
+        locationDisplayText() {
+            const rawLoc = this.item?.metadata?.LocationName || this.item?.metadata?.location_name;
+            const locName = formatLocationAddress(rawLoc);
+            if (locName) {
+                return locName;
+            }
+            const rawLat = this.item?.metadata?.Latitude ?? this.item?.metadata?.latitude;
+            const rawLng = this.item?.metadata?.Longitude ?? this.item?.metadata?.longitude;
+            const lat = parseFloat(rawLat);
+            const lng = parseFloat(rawLng);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                return `${lat.toFixed(1)}°, ${lng.toFixed(1)}°`;
+            }
+            return this.$t('dashboard.hasLocation') || 'GPS';
+        },
+        locationTooltip() {
+            const rawLoc = this.item?.metadata?.LocationName || this.item?.metadata?.location_name || '';
+            const name = formatLocationAddress(rawLoc);
+            const lat = this.item?.metadata?.Latitude ?? this.item?.metadata?.latitude;
+            const lng = this.item?.metadata?.Longitude ?? this.item?.metadata?.longitude;
+            if (name && lat && lng) {
+                return `${name} (${lat}, ${lng})`;
+            }
+            if (lat && lng) {
+                return `${lat}, ${lng}`;
+            }
+            return name;
         }
     },
     watch: {
@@ -187,6 +238,9 @@ export default {
         }
     },
     methods: {
+        handleLocationClick() {
+            this.$emit('locationClick', this.item);
+        },
         handleSelectChange(value) {
             this.localSelected = value;
             this.$emit('update:selected', value);
@@ -212,7 +266,7 @@ export default {
 <style scoped>
 .list-item {
     display: grid;
-    grid-template-columns: 50px 60px minmax(180px, 1fr) 130px 100px 110px 130px 80px 100px 120px;
+    grid-template-columns: 50px 60px minmax(180px, 1fr) 120px 90px 100px 130px 110px 80px 100px 120px;
     content-visibility: auto;
     contain: layout paint style;
     contain-intrinsic-size: 65px;
@@ -274,7 +328,7 @@ export default {
     font-size: 13px;
     color: var(--el-text-color-secondary);
 }
-.list-col-address {
+.list-col-address, .list-col-location {
     font-size: 13px;
 }
 .address-box, .channel-name-box {
@@ -294,6 +348,34 @@ export default {
 .address-box { width: 85px; font-family: 'Consolas', 'Monaco', monospace; }
 .channel-name-box { width: 70px; }
 .address-box::-webkit-scrollbar, .channel-name-box::-webkit-scrollbar { display: none; }
+.location-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--el-fill-color-light);
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 12px;
+    color: var(--el-color-primary);
+    max-width: 120px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.location-box:hover {
+    background: var(--el-color-primary-light-9);
+    border-color: var(--el-color-primary-light-5);
+    transform: translateY(-1px);
+}
+.location-box .location-pin-svg {
+    flex-shrink: 0;
+    color: var(--el-color-primary);
+}
+.location-name-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .list-col-tags {
     display: flex;
     align-items: center;
@@ -365,7 +447,7 @@ export default {
         gap: 6px;
         font-size: 12px;
     }
-    .list-col-size, .list-col-date, .list-col-tags, .list-col-channel, .list-col-channel-name, .list-col-address {
+    .list-col-size, .list-col-date, .list-col-tags, .list-col-channel, .list-col-channel-name, .list-col-address, .list-col-location {
         display: none;
     }
     .list-col-name {

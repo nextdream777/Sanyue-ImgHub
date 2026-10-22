@@ -238,7 +238,8 @@ import * as imageConversion from 'image-conversion'
 import { mapGetters } from 'vuex'
 import { buildFileUrls, updateFileListUrls, getUrlByFormat } from '@/utils/upload/urlBuilder'
 import { computeSha256 } from '@/utils/upload/sha256'
-import { extractExifGps } from '@/utils/exifReader'
+import { extractExif, extractExifGps } from '@/utils/exifReader'
+import { reverseGeocode } from '@/utils/reverseGeocode'
 import { wgs84ToGcj02, gcj02ToWgs84 } from '@/utils/coordTransform'
 import { isAnimatedImage } from '@/utils/upload/animatedImage'
 import { ensureFileType, getFileExtension, getFileTypeCategory, normalizeMimeType, resolveFileType } from '@/utils/mimeTypes'
@@ -650,11 +651,54 @@ methods: {
         const abortController = new AbortController()
         this.abortControllers.set(file.file.uid, abortController)
         
+        // 等待逆地理编码完成（最多等待 800ms，保证优先带上地名，且绝不阻塞卡顿）
+        if (fileItem.locationPromise && !fileItem.locationName) {
+            try {
+                await Promise.race([
+                    fileItem.locationPromise,
+                    new Promise(r => setTimeout(r, 800))
+                ])
+            } catch (e) {}
+        }
+
         const formData = new FormData()
         formData.append('file', file.file)
         if (fileItem.hasGps && fileItem.latitude !== null && fileItem.longitude !== null) {
             formData.append('latitude', String(fileItem.latitude))
             formData.append('longitude', String(fileItem.longitude))
+        }
+        if (fileItem.altitude !== null && fileItem.altitude !== undefined) {
+            formData.append('altitude', String(fileItem.altitude))
+        }
+        if (fileItem.locationName) {
+            formData.append('locationName', fileItem.locationName)
+        }
+        if (fileItem.camera) {
+            formData.append('camera', fileItem.camera)
+        }
+        if (fileItem.lensModel) {
+            formData.append('lensModel', fileItem.lensModel)
+        }
+        if (fileItem.dateTime) {
+            formData.append('exifTime', fileItem.dateTime)
+        }
+        if (fileItem.exposureTime) {
+            formData.append('exposureTime', fileItem.exposureTime)
+        }
+        if (fileItem.fNumber) {
+            formData.append('fNumber', fileItem.fNumber)
+        }
+        if (fileItem.iso) {
+            formData.append('iso', fileItem.iso)
+        }
+        if (fileItem.focalLength) {
+            formData.append('focalLength', fileItem.focalLength)
+        }
+        if (fileItem.focalLength35mm) {
+            formData.append('focalLength35mm', fileItem.focalLength35mm)
+        }
+        if (fileItem.exposureBias) {
+            formData.append('exposureBias', fileItem.exposureBias)
         }
         if (uploadChannel === 'external') {
             formData.append('url', file.file.url)
@@ -752,6 +796,16 @@ methods: {
         }
 
         try {
+            // 等待逆地理编码完成（最多等待 800ms）
+            if (fileItem.locationPromise && !fileItem.locationName) {
+                try {
+                    await Promise.race([
+                        fileItem.locationPromise,
+                        new Promise(r => setTimeout(r, 800))
+                    ])
+                } catch (e) {}
+            }
+
             // 第一步：初始化分块上传，获取uploadId
             const initFormData = new FormData()
             initFormData.append('originalFileName', file.file.name)
@@ -760,6 +814,39 @@ methods: {
             if (fileItem.hasGps && fileItem.latitude !== null && fileItem.longitude !== null) {
                 initFormData.append('latitude', String(fileItem.latitude))
                 initFormData.append('longitude', String(fileItem.longitude))
+            }
+            if (fileItem.altitude !== null && fileItem.altitude !== undefined) {
+                initFormData.append('altitude', String(fileItem.altitude))
+            }
+            if (fileItem.locationName) {
+                initFormData.append('locationName', fileItem.locationName)
+            }
+            if (fileItem.camera) {
+                initFormData.append('camera', fileItem.camera)
+            }
+            if (fileItem.lensModel) {
+                initFormData.append('lensModel', fileItem.lensModel)
+            }
+            if (fileItem.dateTime) {
+                initFormData.append('exifTime', fileItem.dateTime)
+            }
+            if (fileItem.exposureTime) {
+                initFormData.append('exposureTime', fileItem.exposureTime)
+            }
+            if (fileItem.fNumber) {
+                initFormData.append('fNumber', fileItem.fNumber)
+            }
+            if (fileItem.iso) {
+                initFormData.append('iso', fileItem.iso)
+            }
+            if (fileItem.focalLength) {
+                initFormData.append('focalLength', fileItem.focalLength)
+            }
+            if (fileItem.focalLength35mm) {
+                initFormData.append('focalLength35mm', fileItem.focalLength35mm)
+            }
+            if (fileItem.exposureBias) {
+                initFormData.append('exposureBias', fileItem.exposureBias)
             }
 
             const initResponse = await axios({
@@ -1073,13 +1160,13 @@ methods: {
             let processedFile = file
             let convertedToWebp = false
             const preserveAnimation = await isAnimatedImage(file)
-            let gpsInfo = { hasGps: false }
+            let exifInfo = { hasGps: false }
             try {
                 if (file.type && file.type.includes('image')) {
-                    gpsInfo = await extractExifGps(file)
+                    exifInfo = await extractExif(file)
                 }
             } catch (err) {
-                console.warn('嗅探 EXIF GPS 失败:', err)
+                console.warn('嗅探 EXIF 失败:', err)
             }
             
             // WebP 转换：在压缩之前进行
@@ -1110,7 +1197,7 @@ methods: {
 
             const pushFileToQueue = (file, serverCompress) => {
                 const fileUrl = URL.createObjectURL(file)
-                this.fileList.push({
+                const queueItem = {
                     uid: file.uid,
                     name: file.uploadRelativePath || file.name,
                     type: file.type,
@@ -1128,11 +1215,43 @@ methods: {
                     serverCompress: serverCompress,
                     uploadFolder: file.uploadFolder ?? this.uploadFolder,
                     retryCount: 0,
-                    hasGps: gpsInfo.hasGps || false,
-                    latitude: gpsInfo.latitude || null,
-                    longitude: gpsInfo.longitude || null,
-                    geoText: gpsInfo.hasGps ? `${gpsInfo.latitude.toFixed(2)}, ${gpsInfo.longitude.toFixed(2)}` : ''
-                })
+                    hasGps: exifInfo.hasGps || false,
+                    latitude: exifInfo.latitude || null,
+                    longitude: exifInfo.longitude || null,
+                    altitude: exifInfo.altitude || null,
+                    altitudeText: exifInfo.altitudeText || '',
+                    locationName: '',
+                    locationPromise: null,
+                    geoText: exifInfo.hasGps ? `${exifInfo.latitude.toFixed(2)}, ${exifInfo.longitude.toFixed(2)}` : '',
+                    camera: exifInfo.camera || '',
+                    make: exifInfo.make || '',
+                    model: exifInfo.model || '',
+                    lensModel: exifInfo.lensModel || '',
+                    dateTime: exifInfo.dateTime || '',
+                    subSecTime: exifInfo.subSecTime || '',
+                    exposureTime: exifInfo.exposureTime || '',
+                    fNumber: exifInfo.fNumber || '',
+                    iso: exifInfo.iso || '',
+                    focalLength: exifInfo.focalLength || '',
+                    focalLength35mm: exifInfo.focalLength35mm || '',
+                    exposureBias: exifInfo.exposureBias || '',
+                    software: exifInfo.software || ''
+                }
+
+                // 提前进行逆地理编码：将坐标转化为中文地名，上传前即可展示与同步提交
+                if (queueItem.hasGps && queueItem.latitude !== null && queueItem.longitude !== null) {
+                    queueItem.locationPromise = reverseGeocode(queueItem.latitude, queueItem.longitude)
+                        .then(name => {
+                            if (name) {
+                                queueItem.locationName = name
+                                queueItem.geoText = name
+                            }
+                            return name
+                        })
+                        .catch(() => '')
+                }
+
+                this.fileList.push(queueItem)
                 resolve(file)
             }
 

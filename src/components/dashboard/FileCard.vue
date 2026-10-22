@@ -75,6 +75,20 @@
             <font-awesome-icon icon="file" class="file-icon"/>
         </div>
         
+        <!-- 左下角地理足迹胶囊 (方案A) -->
+        <div 
+            v-if="hasLocation" 
+            class="card-location-pill" 
+            :title="locationTooltip"
+            @click.stop="handleLocationClick"
+        >
+            <svg class="location-pin-svg" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+            <span class="location-pill-text">{{ locationDisplayText }}</span>
+        </div>
+        
         <!-- 底部覆盖层 -->
         <div class="card-bottom-overlay">
             <div class="file-name-row">
@@ -117,6 +131,7 @@
 
 <script>
 import { isImageFile, isVideoFile, isAudioFile } from '@/utils/mimeTypes';
+import { formatLocationAddress } from '@/utils/reverseGeocode';
 
 export default {
     name: 'FileCard',
@@ -127,7 +142,7 @@ export default {
         previewSrcList: { type: Array, default: () => [] },
         disableTooltip: { type: Boolean, default: false }
     },
-    emits: ['update:selected', 'detail', 'copy', 'move', 'delete', 'download', 'touchstart', 'touchend', 'touchmove'],
+    emits: ['update:selected', 'detail', 'copy', 'move', 'delete', 'download', 'touchstart', 'touchend', 'touchmove', 'locationClick'],
     data() {
         return {
             localSelected: this.selected,
@@ -152,6 +167,40 @@ export default {
             const fileName = this.item.metadata?.FileName || this.item.name || '';
             const parts = fileName.split('/');
             return parts[parts.length - 1];
+        },
+        hasLocation() {
+            const lat = this.item?.metadata?.Latitude ?? this.item?.metadata?.latitude;
+            const lng = this.item?.metadata?.Longitude ?? this.item?.metadata?.longitude;
+            return lat !== undefined && lat !== null && lat !== '' &&
+                   lng !== undefined && lng !== null && lng !== '';
+        },
+        locationDisplayText() {
+            const rawLoc = this.item?.metadata?.LocationName || this.item?.metadata?.location_name;
+            const locName = formatLocationAddress(rawLoc);
+            if (locName) {
+                return locName;
+            }
+            const rawLat = this.item?.metadata?.Latitude ?? this.item?.metadata?.latitude;
+            const rawLng = this.item?.metadata?.Longitude ?? this.item?.metadata?.longitude;
+            const lat = parseFloat(rawLat);
+            const lng = parseFloat(rawLng);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                return `${lat.toFixed(1)}°, ${lng.toFixed(1)}°`;
+            }
+            return this.$t('dashboard.hasLocation') || 'GPS';
+        },
+        locationTooltip() {
+            const rawLoc = this.item?.metadata?.LocationName || this.item?.metadata?.location_name || '';
+            const name = formatLocationAddress(rawLoc);
+            const lat = this.item?.metadata?.Latitude ?? this.item?.metadata?.latitude;
+            const lng = this.item?.metadata?.Longitude ?? this.item?.metadata?.longitude;
+            if (name && lat && lng) {
+                return `${name} (${lat}, ${lng})`;
+            }
+            if (lat && lng) {
+                return `${lat}, ${lng}`;
+            }
+            return name;
         }
     },
     watch: {
@@ -165,6 +214,9 @@ export default {
         }
     },
     methods: {
+        handleLocationClick() {
+            this.$emit('locationClick', this.item);
+        },
         handleVideoError() {
             this.videoLoading = false;
             this.videoError = true;
@@ -514,5 +566,64 @@ export default {
 .error-text {
     font-size: 12px;
     color: var(--el-text-color-secondary);
+}
+/* 左下角毛玻璃足迹胶囊 (方案A) */
+.card-location-pill {
+    position: absolute;
+    bottom: clamp(54px, 7.5vh, 66px);
+    left: 8px;
+    z-index: 12;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(8px) saturate(1.2);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 20px;
+    color: #38bdf8;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+    max-width: 140px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+}
+.card-location-pill:hover {
+    background: rgba(15, 23, 42, 0.9);
+    border-color: rgba(56, 189, 248, 0.65);
+    color: #7dd3fc;
+    transform: translateY(-1px) scale(1.03);
+    box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+}
+.card-location-pill .location-pin-svg {
+    flex-shrink: 0;
+    color: #38bdf8;
+    filter: drop-shadow(0 0 2px rgba(56, 189, 248, 0.6));
+    transition: transform 0.25s ease;
+}
+.card-location-pill:hover .location-pin-svg {
+    transform: scale(1.15);
+}
+.location-pill-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@media (max-width: 768px) {
+    .card-location-pill {
+        bottom: 30px;
+        left: 6px;
+        padding: 2px 6px;
+        font-size: 10px;
+        max-width: 110px;
+    }
+    .card-location-pill .location-pin-svg {
+        width: 10px;
+        height: 10px;
+    }
 }
 </style>

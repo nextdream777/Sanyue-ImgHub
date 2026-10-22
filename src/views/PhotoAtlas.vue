@@ -197,6 +197,14 @@
             <span class="meta-label">拍摄设备</span>
             <span class="meta-val">{{ activePhoto.camera }}</span>
           </div>
+          <div class="meta-row" v-if="activePhoto && activePhoto.lensModel">
+            <span class="meta-label">镜头型号</span>
+            <span class="meta-val">{{ activePhoto.lensModel }}</span>
+          </div>
+          <div class="meta-row" v-if="activePhoto && (activePhoto.fNumber || activePhoto.exposureTime || activePhoto.iso || activePhoto.focalLength)">
+            <span class="meta-label">拍摄参数</span>
+            <span class="meta-val font-mono">{{ [activePhoto.fNumber, activePhoto.exposureTime, activePhoto.iso, activePhoto.focalLength].filter(Boolean).join(' ') }}</span>
+          </div>
         </div>
       </div>
 
@@ -932,12 +940,39 @@ export default {
       this.currentCluster = cluster;
       this.activePhoto = cluster.photos && cluster.photos.length ? cluster.photos[0] : null;
       this.isDrawerOpen = true;
+      if (this.activePhoto) {
+        this.fetchPhotoDetail(this.activePhoto);
+      }
     },
     closeDrawer() {
       this.isDrawerOpen = false;
     },
     selectActivePhoto(photo) {
       this.activePhoto = photo;
+      if (photo) {
+        this.fetchPhotoDetail(photo);
+      }
+    },
+    async fetchPhotoDetail(photo) {
+      if (!photo || !photo.id || photo._detailFetched) return;
+      try {
+        const res = await axios.get(`/api/manage/footprint?action=detail&id=${encodeURIComponent(photo.id)}`, { withAuthCode: true });
+        if (res.data?.success && res.data?.data?.[0]) {
+          const detail = res.data.data[0];
+          photo.camera = detail.camera || photo.camera || '';
+          photo.lensModel = detail.lensModel || '';
+          photo.exposureTime = detail.exposureTime || '';
+          photo.fNumber = detail.fNumber || '';
+          photo.iso = detail.iso || '';
+          photo.focalLength = detail.focalLength || '';
+          photo._detailFetched = true;
+          if (this.activePhoto && this.activePhoto.id === photo.id) {
+            this.activePhoto = { ...photo };
+          }
+        }
+      } catch (e) {
+        console.warn('获取照片详情EXIF失败:', e);
+      }
     },
 
     // 9. 顶部筛选

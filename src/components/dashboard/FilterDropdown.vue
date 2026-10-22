@@ -63,6 +63,20 @@
                         </el-checkbox-group>
                     </div>
                 </div>
+                <!-- 地理状态 -->
+                <div class="filter-section">
+                    <div class="filter-title">{{ $t('filter.locationStatus') }}</div>
+                    <div class="filter-options">
+                        <el-checkbox-group v-model="localFilters.locationStatus" @change="handleFilterChange('locationStatus')">
+                            <el-checkbox
+                                v-for="option in locationStatusOptions"
+                                :key="'locationStatus-' + option.value"
+                                :label="option.value">
+                                {{ option.label }}
+                            </el-checkbox>
+                        </el-checkbox-group>
+                    </div>
+                </div>
                 <!-- 渠道类型 -->
                 <div class="filter-section">
                     <div class="filter-title">{{ $t('filter.channelType') }}</div>
@@ -116,7 +130,8 @@ export default {
                 label: [],
                 fileType: [],
                 channel: [],
-                channelName: []
+                channelName: [],
+                locationStatus: []
             })
         },
         channelNameOptions: {
@@ -133,11 +148,18 @@ export default {
                 label: [],
                 fileType: [],
                 channel: [],
-                channelName: []
+                channelName: [],
+                locationStatus: []
             }
         };
     },
     computed: {
+        locationStatusOptions() {
+            return [
+                { label: this.$t('filter.hasLocation'), value: 'has' },
+                { label: this.$t('filter.noLocation'), value: 'none' }
+            ];
+        },
         // 访问状态选项（综合判断 ListType 和 Label）
         // 正常: ListType !== 'Block' && Label !== 'adult'
         // 已屏蔽: ListType === 'Block' || Label === 'adult'
@@ -183,7 +205,7 @@ export default {
             ];
         },
         activeFilterCount() {
-            return Object.values(this.localFilters).reduce((count, arr) => count + arr.length, 0);
+            return Object.values(this.localFilters).reduce((count, arr) => count + (Array.isArray(arr) ? arr.length : 0), 0);
         },
         // 按类型分组渠道名称
         groupedChannelNames() {
@@ -212,7 +234,8 @@ export default {
                     label: Array.isArray(newFilters.label) ? [...newFilters.label] : [],
                     fileType: Array.isArray(newFilters.fileType) ? [...newFilters.fileType] : [],
                     channel: Array.isArray(newFilters.channel) ? [...newFilters.channel] : [],
-                    channelName: Array.isArray(newFilters.channelName) ? [...newFilters.channelName] : []
+                    channelName: Array.isArray(newFilters.channelName) ? [...newFilters.channelName] : [],
+                    locationStatus: Array.isArray(newFilters.locationStatus) ? [...newFilters.locationStatus] : []
                 };
             },
             immediate: true,
@@ -231,7 +254,8 @@ export default {
                 label: [],
                 fileType: [],
                 channel: [],
-                channelName: []
+                channelName: [],
+                locationStatus: []
             };
             this.$emit('update:filters', { ...this.localFilters });
             this.$emit('change', { type: 'clear', filters: { ...this.localFilters } });

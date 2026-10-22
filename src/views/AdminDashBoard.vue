@@ -237,6 +237,7 @@
                         :previewSrcList="item.previewSrcList"
                         :disableTooltip="disableTooltip"
                         @detail="openDetailDialog(index, item.name)"
+                        @locationClick="handleLocationNavigate"
                         @copy="handleCopy(index, item.name)"
                         @move="handleMove(index, item.name)"
                         @delete="handleDelete(index, item.name)"
@@ -271,6 +272,7 @@
                     <div class="list-col list-col-tags">{{ $t('dashboard.tags') }}</div>
                     <div class="list-col list-col-channel">{{ $t('dashboard.channelType') }}</div>
                     <div class="list-col list-col-channel-name">{{ $t('dashboard.channelNameCol') }}</div>
+                    <div class="list-col list-col-location">{{ $t('dashboard.locationCol') }}</div>
                     <div class="list-col list-col-address">{{ $t('dashboard.uploadAddress') }}</div>
                     <div class="list-col list-col-size">{{ $t('dashboard.fileSize') }}</div>
                     <div class="list-col list-col-date">{{ $t('dashboard.uploadTime') }}</div>
@@ -294,6 +296,7 @@
                         :fileLink="getFileLink(item.name)"
                         @enter="enterFolder(item.name)"
                         @detail="openDetailDialog(index, item.name)"
+                        @locationClick="handleLocationNavigate"
                         @copy="handleCopy(index, item.name)"
                         @folderCopy="handleFolderCopy(item.name)"
                         @move="handleMove(index, item.name)"
@@ -572,7 +575,8 @@ data() {
             label: [],         // 审查结果: 'normal', 'teen', 'adult'
             fileType: [],      // 文件类型: 'image', 'video', 'audio', 'other'
             channel: [],       // 渠道类型: 'TelegramNew', 'CloudflareR2', 'S3', 'Discord', 'HuggingFace', 'WebDAV', 'External'
-            channelName: []    // 渠道名称: 动态获取
+            channelName: [],   // 渠道名称: 动态获取
+            locationStatus: []
         },
         channelNameOptions: [], // 动态从文件列表中提取
         // 移动文件对话框相关状态
@@ -643,7 +647,7 @@ computed: {
     },
     // 计算当前激活的筛选条件数量（数组形式）
     activeFilterCount() {
-        return Object.values(this.filters).reduce((count, arr) => count + (Array.isArray(arr) ? arr.length : 0), 0);
+        return Object.values(this.filters).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
     },
     // 判断是否处于搜索或筛选模式
     hasSearchOrFilter() {
@@ -1041,7 +1045,8 @@ methods: {
             label: [],
             fileType: [],
             channel: [],
-            channelName: []
+            channelName: [],
+            locationStatus: []
         };
         this.currentPage = 1;
         this.refreshFileList();
@@ -1107,6 +1112,15 @@ methods: {
     openDetailDialog(index, key) {
         this.detailFile = this.paginatedTableData[index];
         this.showdetailDialog = true;
+    },
+    handleLocationNavigate(item) {
+        if (!item) return;
+        const name = item.name || '';
+        if (name) {
+            this.$router.push({ path: `/atlas/${encodeURIComponent(name)}` });
+        } else {
+            this.$router.push({ path: '/atlas' });
+        }
     },
     handleTabClick(tab) {
         this.activeUrlTab = tab.props.name;
@@ -2823,7 +2837,7 @@ beforeUnmount() {
 
 .list-header {
     display: grid;
-    grid-template-columns: 50px 60px minmax(180px, 1fr) 130px 100px 110px 130px 80px 100px 120px;
+    grid-template-columns: 50px 60px minmax(180px, 1fr) 120px 90px 100px 130px 110px 80px 100px 120px;
     padding: 12px 20px;
     background: var(--admin-dashboard-stats-bg);
     font-weight: 600;
@@ -2836,6 +2850,11 @@ beforeUnmount() {
 .list-col {
     display: flex;
     align-items: center;
+}
+
+.list-col-location {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
 }
 
 .list-col-checkbox {

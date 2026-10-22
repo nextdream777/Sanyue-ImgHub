@@ -1,11 +1,17 @@
 /**
- * 轻量纯前端 EXIF GPS 与元数据解析器 (Zero Dependency EXIF Reader)
- * 只读取文件前 128KB，快速嗅探手机照片中的 GPS 经纬度、拍摄时间与相机型号
+ * 轻量纯前端 EXIF 全能解析器 (Zero Dependency EXIF Reader)
+ * 只读取文件前 128KB，快速嗅探相机型号、镜头规格、快门/光圈/ISO曝光三要素、GPS坐标、海拔及拍摄时间
  */
 
 function parseRational(dataView, offset, littleEndian) {
     const num = dataView.getUint32(offset, littleEndian);
     const den = dataView.getUint32(offset + 4, littleEndian);
+    return den === 0 ? 0 : num / den;
+}
+
+function parseSRational(dataView, offset, littleEndian) {
+    const num = dataView.getInt32(offset, littleEndian);
+    const den = dataView.getInt32(offset + 4, littleEndian);
     return den === 0 ? 0 : num / den;
 }
 
@@ -52,7 +58,7 @@ function parseTags(dataView, tiffStart, dirStart, littleEndian) {
             // LONG (32-bit)
             tags[tag] = dataView.getUint32(valueOffset, littleEndian);
         } else if (type === 5) {
-            // RATIONAL (2x 32-bit)
+            // RATIONAL (2x 32-bit unsigned)
             if (count === 1) {
                 tags[tag] = parseRational(dataView, valueOffset, littleEndian);
             } else {
@@ -62,18 +68,98 @@ function parseTags(dataView, tiffStart, dirStart, littleEndian) {
                 }
                 tags[tag] = rationals;
             }
+        } else if (type === 10) {
+            // SRATIONAL (2x 32-bit signed)
+            if (count === 1) {
+                tags[tag] = parseSRational(dataView, valueOffset, littleEndian);
+            } else {
+                const srationals = [];
+                for (let j = 0; j < count; j++) {
+                    srationals.push(parseSRational(dataView, valueOffset + j * 8, littleEndian));
+                }
+                tags[tag] = srationals;
+            }
         }
     }
     return tags;
 }
 
-export async function extractExifGps(file) {
+// 格式化辅助函数
+function formatExposureTime(val) {
+    if (!val || typeof val !== 'number' || isNaN(val) || val <= 0) return '';
+    if (val < 1) {
+        const denom = Math.round(1 / val);
+        return `1/${denom}s`;
+    }
+    return `${val.toFixed(1).replace(/\.0$/, '')}s`;
+}
+
+function formatFNumber(val) {
+    if (!val || typeof val !== 'number' || isNaN(val) || val <= 0) return '';
+    return `f/${val.toFixed(1).replace(/\.0$/, '')}`;
+}
+
+function formatIso(val) {
+    if (!val) return '';
+    return `ISO ${val}`;
+}
+
+function formatFocalLength(val) {
+    if (!val || typeof val !== 'number' || isNaN(val) || val <= 0) return '';
+    return `${Math.round(val)}mm`;
+}
+
+function formatExposureBias(val) {
+    if (val === undefined || val === null || isNaN(val)) return '';
+    const rounded = Math.round(val * 10) / 10;
+    if (rounded === 0) return '0 EV';
+    return `${rounded > 0 ? '+' : ''}${rounded.toFixed(1)} EV`;
+}
+
+function formatDateTime(str) {
+    if (!str || typeof str !== 'string') return '';
+    const match = str.match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}:\d{2}:\d{2})/);
+    if (match) {
+        return `${match[1]}-${match[2]}-${match[3]} ${match[4]}`;
+    }
+    return str.trim();
+}
+
+/**
+ * 完整解析照片 EXIF 元数据
+ * @param {Blob|File} file
+ * @returns {Promise<Object>}
+ */
+export async function extractExif(file) {
+    const emptyResult = {
+        hasGps: false,
+        latitude: null,
+        longitude: null,
+        altitude: null,
+        altitudeText: '',
+        camera: '',
+        make: '',
+        model: '',
+        lensModel: '',
+        lensMake: '',
+        dateTime: '',
+        subSecTime: '',
+        exposureTime: '',
+        fNumber: '',
+        iso: '',
+        focalLength: '',
+        focalLength35mm: '',
+        exposureBias: '',
+        software: '',
+        orientation: 1
+    };
+
     if (!file || !(file instanceof Blob)) {
-        return { hasGps: false };
+        return emptyResult;
     }
 
-    // 只读取前 128KB 即可覆盖几乎所有相机的 APP1 EXIF 头
-    const slice = file.slice(0, 131072);
+    // 读取前 512KB 以完整覆盖现代手机与相机的 APP1 EXIF 头及各 IFD 偏移
+    const slice = file.slice(0, 524288);
 
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -84,7 +170,7 @@ export async function extractExifGps(file) {
 
                 // 检查 JPEG 魔数: 0xFFD8
                 if (view.getUint16(0) !== 0xFFD8) {
-                    return resolve({ hasGps: false });
+                    return resolve(emptyResult);
                 }
 
                 let offset = 2;
@@ -103,13 +189,13 @@ export async function extractExifGps(file) {
                 }
 
                 if (app1Offset === -1) {
-                    return resolve({ hasGps: false });
+                    return resolve(emptyResult);
                 }
 
                 // 检查 Exif 标识符: "Exif\0\0"
                 const exifHeader = parseString(view, app1Offset + 4, 6);
                 if (exifHeader !== 'Exif') {
-                    return resolve({ hasGps: false });
+                    return resolve(emptyResult);
                 }
 
                 const tiffStart = app1Offset + 10;
@@ -121,71 +207,124 @@ export async function extractExifGps(file) {
                 const ifd0Offset = tiffStart + view.getUint32(tiffStart + 4, littleEndian);
                 const ifd0Tags = parseTags(view, tiffStart, ifd0Offset, littleEndian);
 
+                const make = ifd0Tags[0x010F] || '';
+                const model = ifd0Tags[0x0110] || '';
+                const software = ifd0Tags[0x0131] || '';
+                const orientation = ifd0Tags[0x0112] || 1;
+
+                // 拼接相机名称
+                let camera = '';
+                if (make && model) {
+                    camera = model.toLowerCase().startsWith(make.toLowerCase()) ? model : `${make} ${model}`;
+                } else {
+                    camera = model || make || '';
+                }
+
                 let dateTime = '';
-                let make = ifd0Tags[0x010F] || '';
-                let model = ifd0Tags[0x0110] || '';
+                let subSecTime = '';
+                let exposureTime = '';
+                let fNumber = '';
+                let iso = '';
+                let focalLength = '';
+                let focalLength35mm = '';
+                let exposureBias = '';
+                let lensModel = '';
+                let lensMake = '';
 
                 // Exif IFD
                 if (ifd0Tags[0x8769]) {
                     const exifOffset = tiffStart + ifd0Tags[0x8769];
                     const exifTags = parseTags(view, tiffStart, exifOffset, littleEndian);
-                    dateTime = exifTags[0x9003] || exifTags[0x9004] || '';
+                    
+                    dateTime = formatDateTime(exifTags[0x9003] || exifTags[0x9004] || ifd0Tags[0x0132] || '');
+                    subSecTime = exifTags[0x9290] || exifTags[0x9291] || '';
+                    exposureTime = formatExposureTime(exifTags[0x829A]);
+                    fNumber = formatFNumber(exifTags[0x829D]);
+                    iso = formatIso(exifTags[0x8827]);
+                    focalLength = formatFocalLength(exifTags[0x920A]);
+                    focalLength35mm = formatFocalLength(exifTags[0xA405]);
+                    exposureBias = formatExposureBias(exifTags[0x9204]);
+                    lensModel = exifTags[0xA434] || '';
+                    lensMake = exifTags[0xA433] || '';
                 }
+
+                let hasGps = false;
+                let latitude = null;
+                let longitude = null;
+                let altitude = null;
+                let altitudeText = '';
 
                 // GPS IFD
-                if (!ifd0Tags[0x8825]) {
-                    return resolve({
-                        hasGps: false,
-                        dateTime,
-                        make,
-                        model
-                    });
-                }
+                if (ifd0Tags[0x8825]) {
+                    const gpsOffset = tiffStart + ifd0Tags[0x8825];
+                    const gpsTags = parseTags(view, tiffStart, gpsOffset, littleEndian);
 
-                const gpsOffset = tiffStart + ifd0Tags[0x8825];
-                const gpsTags = parseTags(view, tiffStart, gpsOffset, littleEndian);
+                    const latRationals = gpsTags[0x0002];
+                    const latRef = gpsTags[0x0001] || 'N';
+                    const lngRationals = gpsTags[0x0004];
+                    const lngRef = gpsTags[0x0003] || 'E';
 
-                const latRationals = gpsTags[0x0002];
-                const latRef = gpsTags[0x0001] || 'N';
-                const lngRationals = gpsTags[0x0004];
-                const lngRef = gpsTags[0x0003] || 'E';
+                    if (Array.isArray(latRationals) && Array.isArray(lngRationals) && latRationals.length === 3 && lngRationals.length === 3) {
+                        let lat = latRationals[0] + latRationals[1] / 60.0 + latRationals[2] / 3600.0;
+                        if (latRef === 'S') lat = -lat;
 
-                if (Array.isArray(latRationals) && Array.isArray(lngRationals) && latRationals.length === 3 && lngRationals.length === 3) {
-                    let lat = latRationals[0] + latRationals[1] / 60.0 + latRationals[2] / 3600.0;
-                    if (latRef === 'S') lat = -lat;
+                        let lng = lngRationals[0] + lngRationals[1] / 60.0 + lngRationals[2] / 3600.0;
+                        if (lngRef === 'W') lng = -lng;
 
-                    let lng = lngRationals[0] + lngRationals[1] / 60.0 + lngRationals[2] / 3600.0;
-                    if (lngRef === 'W') lng = -lng;
+                        // 验证经纬度有效性
+                        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && (lat !== 0 || lng !== 0)) {
+                            hasGps = true;
+                            latitude = parseFloat(lat.toFixed(6));
+                            longitude = parseFloat(lng.toFixed(6));
 
-                    // 验证经纬度有效性
-                    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && (lat !== 0 || lng !== 0)) {
-                        return resolve({
-                            hasGps: true,
-                            latitude: parseFloat(lat.toFixed(6)),
-                            longitude: parseFloat(lng.toFixed(6)),
-                            dateTime,
-                            make,
-                            model
-                        });
+                            // 海拔解析
+                            if (gpsTags[0x0006] !== undefined) {
+                                const rawAlt = gpsTags[0x0006];
+                                const altNum = typeof rawAlt === 'number' ? rawAlt : (Array.isArray(rawAlt) ? rawAlt[0] : 0);
+                                const altRef = gpsTags[0x0005] === 1 ? -1 : 1;
+                                altitude = parseFloat((altNum * altRef).toFixed(1));
+                                altitudeText = `${altitude}m`;
+                            }
+                        }
                     }
                 }
 
-                return resolve({
-                    hasGps: false,
-                    dateTime,
+                resolve({
+                    hasGps,
+                    latitude,
+                    longitude,
+                    altitude,
+                    altitudeText,
+                    camera,
                     make,
-                    model
+                    model,
+                    lensModel,
+                    lensMake,
+                    dateTime,
+                    subSecTime,
+                    exposureTime,
+                    fNumber,
+                    iso,
+                    focalLength,
+                    focalLength35mm,
+                    exposureBias,
+                    software,
+                    orientation
                 });
             } catch (err) {
-                console.warn('EXIF GPS parse error:', err);
-                resolve({ hasGps: false });
+                console.warn('EXIF parse error:', err);
+                resolve(emptyResult);
             }
         };
-        reader.onerror = () => resolve({ hasGps: false });
+        reader.onerror = () => resolve(emptyResult);
         reader.readAsArrayBuffer(slice);
     });
 }
 
+// 保持向前兼容旧方法名
+export const extractExifGps = extractExif;
+
 export default {
+    extractExif,
     extractExifGps
 };
