@@ -81,6 +81,10 @@
             <h3 class="first-title">{{ $t('sysAI.tagging') }}</h3>
             <el-form :model="tagging" label-width="120px" :disabled="saving">
                 <el-form-item :label="$t('sysAI.enableTagging')"><el-switch v-model="tagging.enabled" /></el-form-item>
+                <el-form-item>
+                    <template #label>{{ $t('sysAI.autoTagOnUpload') }}<el-tooltip placement="right"><template #content><ul class="tooltip-help-list"><li v-for="point in $t('sysAI.autoTagOnUploadHint').split('\n')" :key="point">{{ point }}</li></ul></template><font-awesome-icon icon="question-circle" class="help-icon" /></el-tooltip></template>
+                    <el-switch v-model="tagging.autoTagOnUpload" :disabled="!tagging.enabled" />
+                </el-form-item>
                 <el-form-item :label="$t('sysAI.modelName')"><el-select v-model="tagging.modelId"><el-option v-for="m in visionModels" :key="m.id" :label="`${m.model || m.id} · ${providerName(m.providerId)}`" :value="m.id" :disabled="!isModelAvailable(m)" /></el-select></el-form-item>
                 <el-form-item :label="$t('sysAI.language')"><el-select v-model="tagging.language"><el-option label="中文" value="zh-CN" /><el-option label="English" value="en" /></el-select></el-form-item>
                 <el-form-item :label="$t('sysAI.maxTags')"><el-input-number v-model="tagging.maxTags" :min="1" :max="10" /></el-form-item>
@@ -119,7 +123,7 @@
                 <el-form-item :label="$t('sysAI.modelName')" prop="model"><el-input v-model="modelDraft.model" maxlength="200" /></el-form-item>
                 <el-form-item :label="$t('sysAI.vision')"><el-switch v-model="modelDraft.vision" /></el-form-item>
                 <el-form-item>
-                    <template #label>{{ $t('sysAI.jsonMode') }}<el-tooltip placement="top"><template #content><span class="json-mode-hint">{{ $t('sysAI.jsonModeHint') }}</span></template><font-awesome-icon icon="question-circle" class="help-icon" /></el-tooltip></template>
+                    <template #label>{{ $t('sysAI.jsonMode') }}<el-tooltip placement="top"><template #content><ul class="tooltip-help-list"><li v-for="point in $t('sysAI.jsonModeHint').split('\n')" :key="point">{{ point }}</li></ul></template><font-awesome-icon icon="question-circle" class="help-icon" /></el-tooltip></template>
                     <el-select v-model="modelDraft.structuredOutput"><el-option :label="$t('sysAI.promptOnly')" value="none" /><el-option :label="$t('sysAI.nativeJsonObject')" value="json" /></el-select>
                 </el-form-item>
                 <el-form-item :label="$t('sysAI.outputTokens')"><el-input-number v-model="modelDraft.maxOutputTokens" :min="64" :max="2048" /></el-form-item>
@@ -185,6 +189,7 @@ export default {
             this.defaultPrompt = config.defaults.tagPrompt;
             this.prompt = config.promptOverrides[PROMPT_ID]?.template || this.defaultPrompt;
             this.vocabulary = config.capabilities['image.tags'].preferredTags.join(', ');
+            config.capabilities['image.tags'].autoTagOnUpload = config.capabilities['image.tags'].autoTagOnUpload === true;
             this.settings = config;
             this.markSettingsSaved();
         },
@@ -278,7 +283,6 @@ export default {
     padding-bottom: 12px; border-bottom: 2px solid var(--el-color-primary-light-7);
 }
 .help-icon { margin-left: 5px; cursor: pointer; }
-.json-mode-hint { display: block; white-space: pre-line; max-width: min(420px, calc(100vw - 32px)); }
 
 .first-settings :deep(.el-form) {
     padding: 20px 24px; background-color: var(--glass-bg) !important;

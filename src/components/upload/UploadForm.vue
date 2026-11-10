@@ -47,6 +47,10 @@
                         </button>
                     </el-tooltip>
                 </div>
+                <div v-if="expiryHint" class="upload-expiry-hint" :class="{'upload-list-busy': fileList.length}">
+                    <font-awesome-icon icon="clock" />
+                    <span>{{ expiryHint }}</span>
+                </div>
             </el-upload>
             <input
                 ref="folderInput"
@@ -237,10 +241,12 @@ import axios from '@/utils/axios'
 import * as imageConversion from 'image-conversion'
 import { mapGetters } from 'vuex'
 import { buildFileUrls, updateFileListUrls, getUrlByFormat } from '@/utils/upload/urlBuilder'
+import { isUploadFormatError } from '@/utils/upload/fileFormat'
 import { computeSha256 } from '@/utils/upload/sha256'
 import { extractExif, extractExifGps } from '@/utils/exifReader'
 import { reverseGeocode } from '@/utils/reverseGeocode'
 import { wgs84ToGcj02, gcj02ToWgs84 } from '@/utils/coordTransform'
+import { expireQuery } from '@/utils/fileExpiry'
 import { isAnimatedImage } from '@/utils/upload/animatedImage'
 import { ensureFileType, getFileExtension, getFileTypeCategory, normalizeMimeType, resolveFileType } from '@/utils/mimeTypes'
 import {
@@ -337,6 +343,17 @@ props: {
     convertToWebp: {
         type: Boolean,
         default: false,
+        required: false
+    },
+    // 文件有效期选项，为空时不发送（由后端使用默认值）
+    expire: {
+        type: String,
+        default: '',
+        required: false
+    },
+    expiryHint: {
+        type: String,
+        default: '',
         required: false
     }
 },
@@ -724,7 +741,8 @@ methods: {
                 (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') +
                 '&uploadNameType=' + uploadNameType + 
                 '&autoRetry=' + autoRetry + 
-                '&uploadFolder=' + encodeURIComponent(targetUploadFolder),
+                '&uploadFolder=' + encodeURIComponent(targetUploadFolder) +
+                expireQuery(this.expire),
             method: 'post',
             data: formData,
             withAuthCode: true,
@@ -857,6 +875,7 @@ methods: {
                     '&uploadNameType=' + uploadNameType + 
                     '&autoRetry=' + autoRetry + 
                     '&uploadFolder=' + encodeURIComponent(targetUploadFolder) +
+                    expireQuery(this.expire) +
                     '&initChunked=true',
                 method: 'post',
                 data: initFormData,
@@ -871,10 +890,10 @@ methods: {
             console.log('分块上传初始化成功，uploadId:', uploadId)
 
             // 记录 totalChunks 和 uploadId 到文件项，用于后续清理
-            const fileItem = this.fileList.find(item => item.uid === file.file.uid)
-            if (fileItem) {
-                fileItem.totalChunks = totalChunks
-                fileItem.uploadId = uploadId
+            const currentFileItem = this.fileList.find(item => item.uid === file.file.uid)
+            if (currentFileItem) {
+                currentFileItem.totalChunks = totalChunks
+                currentFileItem.uploadId = uploadId
             }
 
             // 第二步：并发上传所有分块
@@ -883,6 +902,7 @@ methods: {
             let nextChunkIndex = 0
             let hasError = false
             let errorMsg = ''
+            let uploadError = null
             let isCancelled = false // 标记是否被取消
 
             const uploadChunk = async (chunkIndex) => {
@@ -929,6 +949,10 @@ methods: {
                         })
                         return // Success
                     } catch (err) {
+                        if (isUploadFormatError(err)) {
+                            hasError = true
+                            throw err
+                        }
                         // 如果是取消操作，直接返回
                         if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
                             isCancelled = true
@@ -960,6 +984,7 @@ methods: {
                             if (!isCancelled) {
                                 hasError = true
                                 errorMsg = e.message
+                                if (isUploadFormatError(e) || !uploadError) uploadError = e
                             }
                             break
                         }
@@ -976,7 +1001,7 @@ methods: {
             }
 
             if (hasError) {
-                throw new Error(errorMsg || this.$t('uploadForm.uploadError'))
+                throw uploadError || new Error(errorMsg || this.$t('uploadForm.uploadError'))
             }
 
             // 第三步：所有分块上传完成，发送合并请求
@@ -1004,6 +1029,7 @@ methods: {
                     '&uploadNameType=' + uploadNameType + 
                     '&autoRetry=' + autoRetry + 
                     '&uploadFolder=' + encodeURIComponent(targetUploadFolder) +
+                    expireQuery(this.expire) +
                     '&chunked=true&merge=true',
                 method: 'post',
                 data: mergeFormData,
@@ -1089,8 +1115,8 @@ methods: {
             // 对上传渠道为外链的，不修改链接
             const uploadChannel = fileItem.uploadChannel || this.uploadChannel
             if (uploadChannel !== 'external') {
-                // 从response.data[0].src中去除/file/前缀
-                const srcID = response.data[0].src.replace('/file/', '')
+                const result = Array.isArray(response.data) ? response.data[0] : response.data
+                const srcID = result.src.replace('/file/', '')
                 fileItem.url = `${window.location.protocol}//${window.location.host}/file/` + srcID
                 const urls = buildFileUrls(srcID, file.name, this.rootUrl)
                 Object.assign(fileItem, urls)
@@ -1135,11 +1161,13 @@ methods: {
         const fileItem = this.fileList.find(item => item.uid === file.uid)
         if (!fileItem) return // 文件已被删除
         
-        this.$message.error(this.$t('uploadForm.uploadFailed', { name: this.truncateFilename(file.name) }))
+        const formatBlocked = isUploadFormatError(err)
+        this.$message.error(this.$t(formatBlocked ? 'uploadForm.formatNotAllowed' : 'uploadForm.uploadFailed', { name: this.truncateFilename(file.name) }))
         fileItem.status = 'exception'
+        fileItem.formatBlocked = formatBlocked
         
         // 如果开启了自动重试，安排自动重试
-        if (this.autoReUpload) {
+        if (this.autoReUpload && !formatBlocked) {
             this.scheduleAutoRetry();
         }
         // 注意：并发控制的 onUploadComplete 已在各上传方法的 finally 中调用
@@ -1595,7 +1623,13 @@ methods: {
             if (!fileItem) return
 
             // 手动重试开启一轮新的尝试，不受上一轮自动重试次数限制
-            if (isManualRetry) fileItem.retryCount = 0
+            if (isManualRetry) {
+                fileItem.retryCount = 0
+                fileItem.formatBlocked = false
+            } else if (fileItem.formatBlocked) {
+                this.exceptionList.push(file)
+                return
+            }
 
             const retryCount = fileItem.retryCount || 0;
             if (isManualRetry || retryCount < this.maxRetryCount) {
@@ -1666,7 +1700,7 @@ methods: {
             file.onProgress({ percent: 10, file: file.file });
             console.log('Getting LFS upload URL...');
             const uploadInfoRes = await axios({
-                url: '/upload/huggingface/getUploadUrl',
+                url: '/upload/huggingface/getUploadUrl' + expireQuery(this.expire, '?'),
                 method: 'post',
                 data: {
                     fileSize: file.file.size,
@@ -1728,7 +1762,7 @@ methods: {
             file.onProgress({ percent: 95, file: file.file });
             console.log('Committing file...');
             const commitRes = await axios({
-                url: '/upload/huggingface/commitUpload',
+                url: '/upload/huggingface/commitUpload' + expireQuery(this.expire, '?'),
                 method: 'post',
                 data: {
                     fullId: uploadInfo.fullId,
@@ -1748,11 +1782,7 @@ methods: {
             }
 
             console.log('Upload complete:', commitRes.data);
-            // 转换响应格式以匹配 handleSuccess 期望的格式
-            const formattedResponse = {
-                data: [{ src: commitRes.data.src }]
-            };
-            file.onSuccess(formattedResponse, file.file);
+            file.onSuccess(commitRes, file.file);
 
         } catch (err) {
             // 如果是取消操作，不加入异常列表
@@ -2125,6 +2155,24 @@ beforeDestroy() {
     gap: 6px;
     max-width: calc(100% - 24px);
     min-width: 0;
+}
+
+/* 图标随文字排版：窄屏换行时仍紧贴第一行文字，整体居中 */
+.upload-expiry-hint {
+    margin-top: 6px;
+    padding: 0 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--el-text-color-secondary);
+}
+
+.upload-expiry-hint svg {
+    margin-right: 6px;
+}
+
+.upload-expiry-hint.upload-list-busy {
+    display: none;
 }
 
 .folder-upload-icon-button {

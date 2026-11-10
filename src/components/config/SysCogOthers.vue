@@ -118,7 +118,6 @@
 import fetchWithAuth from '@/utils/fetchWithAuth';
 import FloatingSaveButton from '@/components/FloatingSaveButton.vue';
 import unsavedSettings from '@/mixins/unsavedSettings';
-
 export default {
 mixins: [unsavedSettings],
 components: {
@@ -190,7 +189,7 @@ methods: {
 },
 mounted() {
     this.loading = true;
-    // 获取上传设置
+    // 获取其他设置
     fetchWithAuth('/api/manage/sysConfig/others')
     .then((response) => response.json())
     .then(async (data) => {

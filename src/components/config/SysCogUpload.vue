@@ -1,13 +1,13 @@
 <template>
     <div class="upload-settings" v-loading="loading">
         <!-- 页面标题和操作 -->
+        <h3 class="first-title">
+            {{ $t('sysUpload.title') }}
+            <el-tooltip :content="$t('sysUpload.titleTooltip')" placement="right">
+                <font-awesome-icon icon="question-circle" style="margin-left: 5px; cursor: pointer;"/>
+            </el-tooltip>
+        </h3>
         <div class="page-header">
-            <h3 class="first-title">
-                {{ $t('sysUpload.title') }}
-                <el-tooltip :content="$t('sysUpload.titleTooltip')" placement="right">
-                    <font-awesome-icon icon="question-circle" class="help-icon"/>
-                </el-tooltip>
-            </h3>
             <div class="header-actions">
                 <CustomSelect
                     v-model="channelFilter"
@@ -142,6 +142,10 @@
                 <span>{{ $t('sysUpload.noChannels', { type: channelType.label }) }}</span>
             </div>
         </div>
+
+        <FileFormatSettings ref="fileFormatSettings" @state-change="uploadRuleStates.fileFormat = $event" />
+        <FileExpirySettings ref="fileExpirySettings" embedded @state-change="uploadRuleStates.fileExpiry = $event" />
+        <FloatingSaveButton :show="uploadRulesReady" :loading="savingUploadRules" :dirty="uploadRulesDirty" @click="saveUploadRules" />
 
         <!-- 添加渠道弹窗 -->
         <el-dialog v-model="showAddDialog" :title="$t('sysUpload.addDialogTitle')" class="channel-dialog" destroy-on-close @closed="resetAddForm">
@@ -614,14 +618,22 @@
 import fetchWithAuth from '@/utils/fetchWithAuth';
 import ChannelIcon from '@/components/icons/ChannelIcon.vue';
 import CustomSelect from './CustomSelect.vue';
+import FileExpirySettings from './FileExpirySettings.vue';
+import FileFormatSettings from './FileFormatSettings.vue';
+import FloatingSaveButton from '@/components/FloatingSaveButton.vue';
 
 export default {
 components: {
     ChannelIcon,
-    CustomSelect
+    CustomSelect,
+    FileExpirySettings,
+    FileFormatSettings,
+    FloatingSaveButton
 },
 data() {
     return {
+    uploadRuleStates: { fileFormat: {}, fileExpiry: {} },
+    savingUploadRules: false,
     // 渠道类型筛选
     channelFilter: '',
     // 渠道类型列表
@@ -706,6 +718,8 @@ data() {
     };
 },
 computed: {
+    uploadRulesReady() { return Object.values(this.uploadRuleStates).some(state => state.available && !state.loading); },
+    uploadRulesDirty() { return Object.values(this.uploadRuleStates).some(state => state.dirty); },
     // 筛选下拉框选项
     filterOptions() {
         return [
@@ -765,6 +779,23 @@ computed: {
     }
 },
 methods: {
+    async saveUploadRules() {
+        if (this.savingUploadRules) return;
+        this.savingUploadRules = true;
+        let saved = false;
+        try {
+            for (const ref of ['fileFormatSettings', 'fileExpirySettings']) {
+                const section = this.$refs[ref];
+                if (section?.hasUnsavedChanges) {
+                    if (!await section.saveSettings(false)) return;
+                    saved = true;
+                }
+            }
+            if (saved) this.$message.success(this.$t('sysOthers.settingsSaved'));
+        } finally {
+            this.savingUploadRules = false;
+        }
+    },
     // 卡片光斑跟随鼠标
     handleCardMouseMove(event, channelType, index) {
         const card = event.currentTarget;
@@ -1283,9 +1314,9 @@ mounted() {
 /* 页面头部 */
 .page-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
     flex-wrap: wrap;
     gap: 12px;
 }
@@ -1294,15 +1325,9 @@ mounted() {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-}
-
-.help-icon {
-    cursor: pointer;
-    color: var(--el-text-color-secondary);
-    font-size: 14px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--el-color-primary-light-7);
 }
 
 .inline-warning-icon {

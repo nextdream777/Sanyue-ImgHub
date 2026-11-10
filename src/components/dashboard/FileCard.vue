@@ -10,6 +10,9 @@
             <div v-if="item.metadata?.ListType === 'White'" class="success-tag">{{ channelTag }}</div>
             <div v-else-if="item.metadata?.ListType === 'Block' || item.metadata?.Label === 'adult'" class="fail-tag">{{ channelTag }}</div>
             <div v-else class="success-tag">{{ channelTag }}</div>
+            <div v-if="expiresAt !== null" class="expiry-tag" :class="`expiry-${expiryState}`" :title="expiryTitle">
+                <font-awesome-icon icon="clock"></font-awesome-icon>
+            </div>
             <div v-if="item.metadata?.Tags && item.metadata?.Tags.length > 0" class="primary-tag">
                 <font-awesome-icon icon="tag" style="margin-right: 3px; font-size: 12px;"></font-awesome-icon>
                 {{ item.metadata.Tags[0] }}
@@ -130,11 +133,16 @@
 </template>
 
 <script>
+import { useExpiryClock } from '@/utils/dashboard/useExpiryClock';
 import { isImageFile, isVideoFile, isAudioFile } from '@/utils/mimeTypes';
 import { formatLocationAddress } from '@/utils/reverseGeocode';
+import { formatExpiresAt, getExpiresAt, getExpiryState } from '@/utils/fileExpiry';
 
 export default {
     name: 'FileCard',
+    setup() {
+        return { expiryNow: useExpiryClock() };
+    },
     props: {
         item: { type: Object, required: true },
         selected: { type: Boolean, default: false },
@@ -151,6 +159,18 @@ export default {
         }
     },
     computed: {
+        expiresAt() {
+            return getExpiresAt(this.item?.metadata);
+        },
+        expiryState() {
+            return getExpiryState(this.expiresAt, this.expiryNow);
+        },
+        expiryTitle() {
+            if (this.expiresAt === null) return '';
+            const time = formatExpiresAt(this.expiresAt, this.$i18n?.locale);
+            if (this.expiryState === 'expired') return `${time} · ${this.$t('fileExpiry.expiredWaiting')}`;
+            return this.$t(this.expiryState === 'soon' ? 'fileExpiry.expiresSoon' : 'fileExpiry.badge', { time });
+        },
         channelTag() {
             return this.item.channelTag || '';
         },
@@ -368,6 +388,23 @@ export default {
     height: auto;
     line-height: 1.2;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.expiry-tag {
+    --expiry-color: var(--el-color-success);
+    background-color: var(--expiry-color);
+    color: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--expiry-color);
+    padding: 3px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.2;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.expiry-tag.expiry-soon {
+    --expiry-color: var(--el-color-warning);
+}
+.expiry-tag.expiry-expired {
+    --expiry-color: var(--el-color-danger);
 }
 .primary-tag {
     background-color: rgba(250, 82, 194, 0.6);

@@ -34,6 +34,7 @@
                 <span class="filename-start">{{ fileNameStart }}</span>
                 <span class="filename-end">{{ fileNameEnd }}</span>
             </span>
+            <font-awesome-icon v-if="!isFolder && expiresAt !== null" icon="clock" class="list-expiry-icon" :class="`expiry-${expiryState}`" :title="expiryTitle"/>
         </div>
         <!-- 标签 -->
         <div class="list-col list-col-tags">
@@ -127,11 +128,16 @@
 </template>
 
 <script>
+import { useExpiryClock } from '@/utils/dashboard/useExpiryClock';
 import { isImageFile, isVideoFile } from '@/utils/mimeTypes';
 import { formatLocationAddress } from '@/utils/reverseGeocode';
+import { formatExpiresAt, getExpiresAt, getExpiryState } from '@/utils/fileExpiry';
 
 export default {
     name: 'FileListItem',
+    setup() {
+        return { expiryNow: useExpiryClock() };
+    },
     props: {
         item: { type: Object, required: true },
         selected: { type: Boolean, default: false },
@@ -145,6 +151,18 @@ export default {
         }
     },
     computed: {
+        expiresAt() {
+            return getExpiresAt(this.item?.metadata);
+        },
+        expiryState() {
+            return getExpiryState(this.expiresAt, this.expiryNow);
+        },
+        expiryTitle() {
+            if (this.expiresAt === null) return '';
+            const time = formatExpiresAt(this.expiresAt, this.$i18n?.locale);
+            if (this.expiryState === 'expired') return `${time} · ${this.$t('fileExpiry.expiredWaiting')}`;
+            return this.$t(this.expiryState === 'soon' ? 'fileExpiry.expiresSoon' : 'fileExpiry.badge', { time });
+        },
         isFolder() {
             // 检查 isFolder 属性或名称以 / 结尾
             return this.item.isFolder || this.item.name?.endsWith('/');
@@ -307,6 +325,18 @@ export default {
 }
 .list-col-name:hover {
     color: var(--primary-color-accent);
+}
+.list-expiry-icon {
+    flex-shrink: 0;
+    margin-left: 6px;
+    font-size: 12px;
+    color: var(--el-color-success);
+}
+.list-expiry-icon.expiry-soon {
+    color: var(--el-color-warning);
+}
+.list-expiry-icon.expiry-expired {
+    color: var(--el-color-danger);
 }
 .filename-ellipsis {
     display: flex;
